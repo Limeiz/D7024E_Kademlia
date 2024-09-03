@@ -1,3 +1,8 @@
+# New readme
+Commands: docker-compose up -d, docker ps, docker exec -it <containerID> ping <othercontainerID>
+
+
+# Old readme
 ## Some tips
 
 Here's some advice I like to give students during sprint 0.
