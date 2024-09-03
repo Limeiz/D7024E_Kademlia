@@ -1,5 +1,5 @@
 # New readme
-Commands: docker-compose up -d, docker ps, docker exec -it <containerID> ping <othercontainerID>
+Commands: docker-compose up -d, docker ps, docker exec -it \<containerID> ping \<othercontainerID>
 
 
 # Old readme
