@@ -12,7 +12,7 @@ func main() {
 	// Using stuff from the kademlia package here. Something like...
 	// InitKademliaNode()
 	id := kademlia.NewKademliaID("FFFFFFFF00000000000000000000000000000000")
-	contact := kademlia.NewContact(id, "localhost:8000")		// bootstrap node
+	contact := kademlia.NewContact(id, "localhost:8000") // bootstrap node
 	fmt.Println(contact.String())
 	fmt.Printf("%v\n", contact)
 }
