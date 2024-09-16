@@ -10,7 +10,8 @@ import (
 func main() {
 	fmt.Println("Pretending to run the kademlia app...")
 	// Using stuff from the kademlia package here. Something like...
-	// InitKademliaNode()
+	// Create contact of myself, distance 0 (me)
+	//  InitKademliaNode(me)
 	id := kademlia.NewKademliaID("FFFFFFFF00000000000000000000000000000000")
 	contact := kademlia.NewContact(id, "localhost:8000") // bootstrap node
 	fmt.Println(contact.String())
