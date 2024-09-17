@@ -7,27 +7,40 @@
 
 version: "3"
 services:
-  kademliaNodes:
-    image: kadlab:latest # Make sure your Docker image has this name.
+  kademlia_bootstrap:
+    image: kadlab:latest
+    container_name: kademlia_bootstrap
+    environment:
+      - NODE_TYPE=bootstrap
+    networks:
+      kademlia_network:
+        ipv4_address: 172.28.0.2
+    ports:
+      - "4000:4000"  # Expose port for bootstrap node
+  
+  kademlia_node:
+    image: kadlab:latest
     stdin_open: true
     tty: true
     deploy:
       mode: replicated
       replicas: 50
-#        resources:
-#           limits:
-#              cpus: "0.1"
-#              memory: 50M
       restart_policy:
         condition: on-failure
         delay: 5s
         max_attempts: 3
         window: 10s
-    # ports:
-    #   - "4000-4050:4000"
+    environment:
+      - BOOTSTRAP_NODE=172.28.0.2:4000  # IP address of the bootstrap node
+      - NODE_TYPE=node
     networks:
-      - kademlia_network
-      
+      kademlia_network:
+
 networks:
   kademlia_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16  # Define a custom subnet for static IPs
+
 

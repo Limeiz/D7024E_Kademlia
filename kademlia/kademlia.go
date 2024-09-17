@@ -1,6 +1,8 @@
 package kademlia
 
 type Kademlia struct {
+	ID     *KademliaID
+	Routes *RoutingTable
 }
 
 func (kademlia *Kademlia) LookupContact(target *Contact) {
