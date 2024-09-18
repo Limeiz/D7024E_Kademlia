@@ -4,7 +4,7 @@ const k = 20
 const alpha = 3
 
 type Kademlia struct {
-	ID           *Kademlia
+	ID           *KademliaID
 	routingTable *RoutingTable
 	network      *Network
 	hashmap      map[KademliaID]string
