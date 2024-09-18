@@ -3,10 +3,9 @@ package kademlia
 const k = 20
 const alpha = 3
 
-// const B = 160
-
 type Kademlia struct {
 	routingTable *RoutingTable
+	network      *Network
 	hashmap      map[KademliaID]string
 	// me med this nodes address, port
 }
@@ -28,16 +27,16 @@ func InitKademliaNode(me Contact) *Kademlia { // add bootstrap node?
 // node1.LookupContact(node2)		 från node1 vill vi returnera en lista med k closest contacts till node2
 
 func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativeFindNode
+
 	// If contact doesn't respond, remove from routingTable
 
 	shortlist := kademlia.routingTable.FindClosestContacts(target.ID, alpha)
 	closestNode := shortlist[0] // is this really the closest?
 	responseChan := make(chan []ContactResponse, alpha)
 	doneChan := make(chan struct{})
-	activeRPCs := 0
-	candidates := &ContactCandidates{}
-
 	visitedNodes := make(map[KademliaID]bool)
+	candidates := &ContactCandidates{}
+	activeRPCs := 0
 
 	for len(shortlist) < k {
 		alphaContacts := []Contact{} // the nodes that we will send RPCs to
@@ -56,7 +55,7 @@ func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativ
 
 			// Send the first batch of alpha parallel RPCs
 			activeRPCs++
-			go network.SendFindContactMessage(contact, target, responseChan) // if fail to reply, delete them from shortlist, maybe move all this to a func
+			go kademlia.network.SendFindContactMessage(&contact, target, responseChan) // if fail to reply, delete them from shortlist, maybe move all this to a func
 
 		}
 
@@ -67,8 +66,7 @@ func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativ
 
 	return shortlist
 }
-
-func processResponses(kademlia *Kademlia, responseChan <-chan []ContactResponse, shortlist *[]Contact, visitedNodes map[KademliaID]bool, doneChan chan struct{}, closestNode Contact, activeRPCs int, target Contact, candidates *ContactCandidates) {
+func processResponses(kademlia *Kademlia, responseChan chan []ContactResponse, shortlist *[]Contact, visitedNodes map[KademliaID]bool, doneChan chan struct{}, closestNode Contact, activeRPCs int, target Contact, candidates *ContactCandidates) {
 	for len(*shortlist) < k && activeRPCs > 0 {
 		select {
 		case responseList := <-responseChan:
@@ -91,7 +89,7 @@ func processResponses(kademlia *Kademlia, responseChan <-chan []ContactResponse,
 				if !visitedNodes[*newContact.ID] {
 					visitedNodes[*newContact.ID] = true
 					activeRPCs++
-					go network.SendFindContactMessage(newContact, target, responseChan)
+					go kademlia.network.SendFindContactMessage(&newContact, &target, responseChan)
 				}
 			}
 

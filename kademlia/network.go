@@ -11,14 +11,14 @@ func (network *Network) SendPingMessage(contact *Contact) {
 	// TODO
 }
 
-func (network *Network) SendFindContactMessage(contact *Contact) {	// FIND_NODE Primitive RPC
+func (network *Network) SendFindContactMessage(contact *Contact, target *Contact, responseChan chan []ContactResponse) { // FIND_NODE Primitive RPC
 	// TODO
 }
 
-func (network *Network) SendFindDataMessage(hash string) {	// FIND_VALUE Primitive RPC
+func (network *Network) SendFindDataMessage(hash string) { // FIND_VALUE Primitive RPC
 	// TODO
 }
 
-func (network *Network) SendStoreMessage(data []byte) {	// Primitive STORE RPC
+func (network *Network) SendStoreMessage(data []byte) { // Primitive STORE RPC
 	// TODO
 }
