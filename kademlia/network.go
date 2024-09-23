@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http" // Corrected import
 	"os"
 	"time"
+	"errors"
 )
-
-type Network struct {
-}
 
 type MessageType int32
 
@@ -67,9 +66,24 @@ func DeserializeMessage(data []byte) (MessageHeader, error) {
 	return header, nil
 }
 
-// func Listen(ip string, port int) {
+func ServerInit() {
+	http.HandleFunc("/", DefaultController)    // Corrected net.http to net/http
+	http.HandleFunc("/ping", PingController)   // Corrected net.http to net/http
+}
 
-// }
+func ServerStart(port int) {
+	addr := net.TCPAddr{
+		Port: port,
+		IP:   net.ParseIP("0.0.0.0"),
+	}
+	err := http.ListenAndServe(addr.String(), nil) // Pass addr as a string instead of &addr
+
+	if errors.Is(err, http.ErrServerClosed) {
+		log.Printf("Server closing \n")
+	} else if err != nil {
+		log.Printf("Server error: %s\n", err)
+	}
+}
 
 func OpenPortAndListen(port int) {
 	addr := net.UDPAddr{
@@ -161,18 +175,18 @@ func SendPingMessageByIP(ip_address string) {
 	SendPingMessage(&contact)
 }
 
-func (network *Network) SendMessage(contact *Contact, message_type MessageType) {
-
-}
-
-func (network *Network) SendFindContactMessage(contact *Contact) {
+func SendMessage(contact *Contact, message_type MessageType) {
 	// TODO
 }
 
-func (network *Network) SendFindDataMessage(hash string) {
+func SendFindContactMessage(contact *Contact) {
 	// TODO
 }
 
-func (network *Network) SendStoreMessage(data []byte) {
+func SendFindDataMessage(hash string) {
+	// TODO
+}
+
+func SendStoreMessage(data []byte) {
 	// TODO
 }

@@ -32,7 +32,7 @@ services:
       - BOOTSTRAP_NODE=172.28.0.2:4000  # IP address of the bootstrap node
       - NODE_TYPE=node
       - COMMUNICATION_PORT=8080
-      - STATE_FILE=node.bin
+      - SERVER_PORT=3000
     networks:
       kademlia_network:
 
