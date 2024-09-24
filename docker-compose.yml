@@ -7,18 +7,16 @@
 
 version: "3"
 services:
-  kademlia_bootstrap:
+  kademlia-bootstrap:
     image: kadlab:latest
-    container_name: kademlia_bootstrap
+    container_name: kademlia-bootstrap
     environment:
       - NODE_TYPE=bootstrap
     networks:
       kademlia_network:
         ipv4_address: 172.28.0.2
-    ports:
-      - "4000:4000"  # Expose port for bootstrap node
   
-  kademlia_node:
+  kademlia-node:
     image: kadlab:latest
     stdin_open: true
     tty: true
@@ -33,6 +31,8 @@ services:
     environment:
       - BOOTSTRAP_NODE=172.28.0.2:4000  # IP address of the bootstrap node
       - NODE_TYPE=node
+      - COMMUNICATION_PORT=8080
+      - SERVER_PORT=3000
     networks:
       kademlia_network:
 
