@@ -1,10 +1,10 @@
 package kademlia
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"io"
-	"fmt"
 )
 
 func BeginResponse(request *http.Request, path string) {
@@ -15,14 +15,14 @@ func BeginResponse(request *http.Request, path string) {
 	log.Printf("Got request to path \"%s\" from %s", path, clientIP)
 }
 
-func DefaultController(response http.ResponseWriter, request *http.Request) {
+func (network *Network) DefaultController(response http.ResponseWriter, request *http.Request) {
 	BeginResponse(request, "/")
 
 	io.WriteString(response, "Try some of these commands:\n")
 	io.WriteString(response, "/ping?to=<address>\n")
 }
 
-func PingController(response http.ResponseWriter, request *http.Request) {
+func (network *Network) PingController(response http.ResponseWriter, request *http.Request) {
 	BeginResponse(request, "/ping")
 	ping_address := request.FormValue("to")
 	if ping_address == "" {
@@ -30,6 +30,10 @@ func PingController(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	SendPingMessageByIP(ping_address)
-	fmt.Fprintf(response, "Ping sent to: %s", ping_address)
+	_, err := network.SendMessageAndWaitByIP(ping_address, PING, REQUEST, nil)
+	if err != nil {
+		fmt.Fprintf(response, "Error: Ping cound not be sent: %v", err)
+		return
+	}
+	fmt.Fprintf(response, "Pong recieved from: %s", ping_address)
 }

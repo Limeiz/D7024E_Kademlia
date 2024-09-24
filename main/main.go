@@ -15,20 +15,24 @@ func main() {
 
 	if server_err != nil {
 		log.Fatalln("Could not parse the SERVER_PORT env variable")
+		return
 	}
 	if len(os.Args) > 1 {
 		cli.Init(server_port)
 	} else {
 		kademlia_node_state := kademlia.InitNode()
+
+		net := kademlia.InitNetwork(kademlia_node_state)
 		log.Println("Starting kademlia on node ", kademlia_node_state.Routes.Me.ID)
 		comm_port, comm_err := strconv.Atoi(os.Getenv("COMMUNICATION_PORT"))
 
 		if comm_err != nil {
 			log.Fatalln("Could not parse the COMMUNICATION_PORT env variable")
+			return
 		}
 
-		go kademlia.OpenPortAndListen(comm_port)
-		kademlia.ServerInit()
-		kademlia.ServerStart(server_port)
+		go net.OpenPortAndListen(comm_port)
+		net.ServerInit()
+		net.ServerStart(server_port)
 	}
 }

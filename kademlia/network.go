@@ -1,30 +1,56 @@
 package kademlia
 
 import (
+	"bytes"
 	"encoding/binary"
-	"fmt"
+	"encoding/gob"
+	"errors"
 	"log"
+	"math/rand"
 	"net"
 	"net/http" // Corrected import
-	"os"
+	"strconv"
+	"sync"
 	"time"
-	"errors"
 )
 
-type MessageType int32
+type Network struct {
+	Node             *Kademlia
+	ResponseMap      map[uint64]chan MessageData
+	ResponseMapMutex sync.Mutex
+	Port             int
+}
+
+type MessageType uint8
+type MessageDirection uint8
 
 const (
 	PING MessageType = 0
 	PONG MessageType = 1
 )
 
+const (
+	REQUEST  MessageDirection = 0
+	RESPONSE MessageDirection = 1
+)
+
 type MessageHeader struct {
-	HeaderLength  int32
-	HeaderTag     [4]byte
-	Type          MessageType
-	SenderIP      net.IP
-	ReceiverIP    net.IP
-	ContentOffset int32
+	HeaderLength uint32
+	HeaderTag    [4]byte
+	Direction    MessageDirection
+	Type         MessageType
+	MessageID    uint64
+	SenderID     KademliaID
+	RecieverID   KademliaID
+	BodyLength   uint32
+	SenderIP     string
+	ReceiverIP   string
+	ReceiverZone string // The docker container name, since it doesn't count as a IP
+}
+
+type MessageData struct {
+	Header MessageHeader
+	Data   []byte
 }
 
 func MessageTypeToString(message_type MessageType) string {
@@ -38,45 +64,59 @@ func MessageTypeToString(message_type MessageType) string {
 	}
 }
 
-func SerializeMessage(header MessageHeader) ([]byte, error) {
-	buf := make([]byte, 32) // Arbitrary buffer size
-	binary.LittleEndian.PutUint32(buf[0:], uint32(header.HeaderLength))
-	copy(buf[4:], header.HeaderTag[:])
-	binary.LittleEndian.PutUint32(buf[8:], uint32(header.Type))
-	copy(buf[12:], header.SenderIP.To4())
-	copy(buf[16:], header.ReceiverIP.To4())
-	binary.LittleEndian.PutUint32(buf[20:], uint32(header.ContentOffset))
-
-	return buf, nil
-}
-
-func DeserializeMessage(data []byte) (MessageHeader, error) {
-	var header MessageHeader
-	if len(data) < 32 { // Ensure the message is at least the size of the MessageHeader
-		return header, fmt.Errorf("message too short")
+func MessageDirectionToString(message_direction MessageDirection) string {
+	switch message_direction {
+	case REQUEST:
+		return "REQUEST"
+	case RESPONSE:
+		return "RESPONSE"
+	default:
+		return "NIL"
 	}
-
-	header.HeaderLength = int32(binary.LittleEndian.Uint32(data[0:4]))
-	copy(header.HeaderTag[:], data[4:8])
-	header.Type = MessageType(binary.LittleEndian.Uint32(data[8:12]))
-	header.SenderIP = net.IPv4(data[12], data[13], data[14], data[15])
-	header.ReceiverIP = net.IPv4(data[16], data[17], data[18], data[19])
-	header.ContentOffset = int32(binary.LittleEndian.Uint32(data[20:24]))
-
-	return header, nil
 }
 
-func ServerInit() {
-	http.HandleFunc("/", DefaultController)    // Corrected net.http to net/http
-	http.HandleFunc("/ping", PingController)   // Corrected net.http to net/http
+func SerializeMessage(messageData MessageData) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(messageData)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
-func ServerStart(port int) {
+func DeserializeMessage(data []byte) (MessageData, error) {
+	var messageData MessageData
+	buf := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(buf)
+	err := dec.Decode(&messageData)
+	if err != nil {
+		return messageData, err
+	}
+	return messageData, nil
+}
+
+func InitNetwork(node *Kademlia) *Network {
+	network := &Network{
+		Node:        node,
+		ResponseMap: make(map[uint64]chan MessageData),
+		Port:        8080,
+	}
+	return network
+}
+
+func (network *Network) ServerInit() {
+	http.HandleFunc("/", network.DefaultController)  // Corrected net.http to net/http
+	http.HandleFunc("/ping", network.PingController) // Corrected net.http to net/http
+}
+
+func (network *Network) ServerStart(port int) {
+	network.Port = port
 	addr := net.TCPAddr{
 		Port: port,
 		IP:   net.ParseIP("0.0.0.0"),
 	}
-	err := http.ListenAndServe(addr.String(), nil) // Pass addr as a string instead of &addr
+	err := http.ListenAndServe(addr.String(), nil)
 
 	if errors.Is(err, http.ErrServerClosed) {
 		log.Printf("Server closing \n")
@@ -85,7 +125,36 @@ func ServerStart(port int) {
 	}
 }
 
-func OpenPortAndListen(port int) {
+func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) {
+	message, err := DeserializeMessage(buffer[:n])
+	if err != nil {
+		log.Printf("Failed to deserialize message from %s: %v\n", addr, err)
+		return
+	}
+	log.Printf("Received a %s %s message from %s\n", MessageDirectionToString(message.Header.Direction), MessageTypeToString(message.Header.Type), addr)
+
+	if message.Header.Direction == RESPONSE {
+		responseChan, exists := network.ResponseMap[message.Header.MessageID]
+		if exists {
+			responseChan <- message
+			delete(network.ResponseMap, message.Header.MessageID)
+		} else {
+			log.Printf("No waiting request for message ID %d from %s\n", message.Header.MessageID, addr)
+		}
+	} else {
+		// Handle request messages (e.g., PING) here
+		if message.Header.Type == PING {
+			new_contact := NewContact(&message.Header.SenderID, message.Header.SenderIP)
+			err := network.SendMessage(&new_contact, PONG, RESPONSE, nil, message.Header.MessageID)
+			if err != nil {
+				log.Printf("Failed to send PONG to %s: %v", new_contact.Address, err)
+			}
+		}
+	}
+}
+
+func (network *Network) OpenPortAndListen(port int) {
+	network.Port = port
 	addr := net.UDPAddr{
 		Port: port,
 		IP:   net.ParseIP("0.0.0.0"),
@@ -97,27 +166,16 @@ func OpenPortAndListen(port int) {
 	}
 	defer connection.Close()
 
-	buffer := make([]byte, 1024) // Buffer to store incoming data
+	buffer := make([]byte, 1024)
 	for {
-		// Read UDP packets
 		n, remoteAddr, err := connection.ReadFromUDP(buffer)
 		if err != nil {
 			log.Println("Error reading UDP packet:", err)
 			continue
 		}
-
-		message, err := DeserializeMessage(buffer[:n])
-		if err != nil {
-			log.Printf("Failed to deserialize message from %s: %v\n", remoteAddr, err)
-			continue
-		}
-
-		// Process the message
-		log.Printf("Received %s message from %s\n", MessageTypeToString(message.Type), remoteAddr)
-
-		if message.Type == PING {
-			log.Printf("Received PING from %s\n", remoteAddr)
-		}
+		bufferCopy := make([]byte, n)
+		copy(bufferCopy, buffer[:n])
+		go network.HandleMessages(bufferCopy, n, remoteAddr)
 	}
 }
 
@@ -133,60 +191,85 @@ func GetLocalIP() string {
 	return localAddr.IP.String()
 }
 
-func SendPingMessage(contact *Contact) {
-	conn, err := net.DialTimeout("udp", contact.Address+":"+os.Getenv("COMMUNICATION_PORT"), 2*time.Second)
+func GenerateMessageID() uint64 {
+	return uint64(rand.Uint32())<<32 + uint64(rand.Uint32())
+}
+
+func (network *Network) SendMessage(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...uint64) error {
+	var messageID uint64
+	if len(message_id) > 0 {
+		messageID = message_id[0]
+	} else {
+		messageID = GenerateMessageID()
+	}
+	messageHeader := MessageHeader{
+		HeaderLength: uint32(binary.Size(MessageHeader{})),
+		HeaderTag:    [4]byte{'K', 'A', 'D', 'M'},
+		Direction:    messageDir,
+		Type:         messageType,
+		MessageID:    messageID,
+		SenderID:     *network.Node.Routes.Me.ID,
+		RecieverID:   *contact.ID,
+		BodyLength:   uint32(len(data)),
+		SenderIP:     GetLocalIP(),
+		ReceiverIP:   contact.Address,
+	}
+	messageData := MessageData{
+		Header: messageHeader,
+		Data:   data,
+	}
+	messageBytes, err := SerializeMessage(messageData)
 	if err != nil {
-		log.Printf("Failed to connect to %s: %v", contact.Address, err)
-		return
+		return err
+	}
+	conn, err := net.Dial("udp", contact.Address+":"+strconv.Itoa(network.Port))
+	if err != nil {
+		return err
 	}
 	defer conn.Close()
 
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-
-	message := MessageHeader{
-		HeaderLength:  int32(binary.Size(MessageHeader{})),
-		HeaderTag:     [4]byte{'K', 'A', 'D', 'M'},
-		Type:          PING,
-		SenderIP:      localAddr.IP,
-		ReceiverIP:    net.ParseIP(contact.Address),
-		ContentOffset: 0,
-	}
-
-	// Serialize the message to bytes
-	messageBytes, err := SerializeMessage(message)
-	if err != nil {
-		log.Printf("Failed to serialize message: %v", err)
-		return
-	}
+	log.Printf("Writing message of type %s to %s \n", MessageTypeToString(messageData.Header.Type), messageData.Header.ReceiverIP)
 	_, err = conn.Write(messageBytes)
-	if err != nil {
-		log.Printf("Failed to send Ping to %s: %v", contact.Address, err)
-		return
+	return err
+}
+
+func (network *Network) SendMessageAndWait(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...uint64) (MessageData, error) {
+	var messageID uint64
+	if len(message_id) > 0 {
+		messageID = message_id[0]
+	} else {
+		messageID = GenerateMessageID()
 	}
-
-	log.Printf("Ping sent to %s", contact.Address)
-
-	conn.Close()
+	responseChan := make(chan MessageData)
+	network.ResponseMapMutex.Lock()
+	network.ResponseMap[messageID] = responseChan
+	network.ResponseMapMutex.Unlock()
+	err := network.SendMessage(contact, messageType, messageDir, data, messageID)
+	if err != nil {
+		return MessageData{}, err
+	}
+	select {
+	case response := <-responseChan:
+		network.ResponseMapMutex.Lock()
+		delete(network.ResponseMap, messageID)
+		network.ResponseMapMutex.Unlock()
+		return response, nil
+	case <-time.After(5 * time.Second):
+		network.ResponseMapMutex.Lock()
+		delete(network.ResponseMap, messageID)
+		network.ResponseMapMutex.Unlock()
+		return MessageData{}, errors.New("timeout waiting for response")
+	}
 }
 
-func SendPingMessageByIP(ip_address string) {
+func (network *Network) SendMessageAndWaitByIP(addr string, messageType MessageType, messageDir MessageDirection, data []byte) (MessageData, error) {
 	id := NewRandomKademliaID()
-	contact := NewContact(id, ip_address)
-	SendPingMessage(&contact)
+	contact := NewContact(id, addr)
+	return network.SendMessageAndWait(&contact, messageType, messageDir, data)
 }
 
-func SendMessage(contact *Contact, message_type MessageType) {
-	// TODO
-}
-
-func SendFindContactMessage(contact *Contact) {
-	// TODO
-}
-
-func SendFindDataMessage(hash string) {
-	// TODO
-}
-
-func SendStoreMessage(data []byte) {
-	// TODO
+func (network *Network) SendMessageByIP(addr string, messageType MessageType, messageDir MessageDirection, data []byte) error {
+	id := NewRandomKademliaID()
+	contact := NewContact(id, addr)
+	return network.SendMessage(&contact, messageType, messageDir, data)
 }
