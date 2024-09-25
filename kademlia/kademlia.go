@@ -1,12 +1,16 @@
 package kademlia
 
+import (
+	"os"
+)
+
 type Kademlia struct {
 	Routes *RoutingTable
 }
 
 func InitNode(bootstrap_id *KademliaID) *Kademlia {
 	kademlia_node := Kademlia{}
-	bootstrap_contact = NewContact(bootstrap_id, os.Getenv("BOOTSTRAP_NODE"))
+	bootstrap_contact := NewContact(bootstrap_id, os.Getenv("BOOTSTRAP_NODE"))
 	if os.Getenv("NODE_TYPE") == "bootstrap"{
 		kademlia_node.Routes = NewRoutingTable(bootstrap_contact)
 	}else{
