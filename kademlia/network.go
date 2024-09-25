@@ -43,7 +43,6 @@ type MessageHeader struct {
 	BodyLength   uint32
 	SenderIP     string
 	ReceiverIP   string
-	ReceiverZone string // The docker container name, since it doesn't count as a IP
 }
 
 type MessageData struct {
