@@ -24,7 +24,8 @@ type MessageType uint8
 type MessageDirection uint8
 
 const (
-	PING MessageType = 0
+	PING      MessageType = 0
+	FIND_NODE MessageType = 1
 )
 
 const (
@@ -54,6 +55,8 @@ func MessageTypeToString(message_type MessageType) string {
 	switch message_type {
 	case PING:
 		return "PING"
+	case FIND_NODE:
+		return "FIND_NODE"
 	default:
 		return "NIL"
 	}
@@ -142,6 +145,14 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 		// Handle request messages (e.g., PING) here
 		if message.Header.Type == PING {
 			network.Node.Pong(&sender_contact, &message.Header.MessageID)
+		}
+		// SendMessage(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...*KademliaID) error {
+		if message.Header.Type == FIND_NODE {
+			response, err := network.Node.ProcessFindContactMessage(&message.Data) //fix error
+			err = network.SendMessage(&sender_contact, FIND_NODE, RESPONSE, response, &message.Header.MessageID)
+			if err != nil {
+				log.Printf("Failed to send FIND_NODE to %s: %v", sender_contact.Address, err)
+			}
 		}
 	}
 }
@@ -243,7 +254,7 @@ func (network *Network) SendMessageAndWait(contact *Contact, messageType Message
 	if err != nil {
 		return MessageData{}, err
 	}
-	
+
 	select {
 	case response := <-responseChan:
 		network.ResponseMapMutex.Lock()
