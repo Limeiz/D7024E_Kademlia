@@ -108,6 +108,7 @@ func InitNetwork(node *Kademlia) *Network {
 func (network *Network) ServerInit() {
 	http.HandleFunc("/", network.DefaultController)  // Corrected net.http to net/http
 	http.HandleFunc("/ping", network.PingController) // Corrected net.http to net/http
+	http.HandleFunc("/getid", network.GetID)
 }
 
 func (network *Network) ServerStart(port int) {
