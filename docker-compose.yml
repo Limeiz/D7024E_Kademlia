@@ -14,7 +14,7 @@ services:
       - NODE_TYPE=bootstrap
     networks:
       kademlia_network:
-        ipv4_address: 172.28.0.2
+        ipv4_address: 172.28.0.254
   
   kademlia-node:
     image: kadlab:latest
@@ -29,7 +29,7 @@ services:
         max_attempts: 3
         window: 10s
     environment:
-      - BOOTSTRAP_NODE=172.28.0.2:4000  # IP address of the bootstrap node
+      - BOOTSTRAP_NODE=172.28.0.254  # IP address of the bootstrap node
       - NODE_TYPE=node
       - COMMUNICATION_PORT=8080
       - SERVER_PORT=3000
