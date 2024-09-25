@@ -26,6 +26,7 @@ func main() {
 		kademlia_node_state = kademlia.InitNode(bootstrap_node_id)
 
 		net := kademlia.InitNetwork(kademlia_node_state)
+		kademlia_node_state.Network = net
 		log.Println("Starting kademlia on node ", kademlia_node_state.Routes.Me.ID)
 		comm_port, comm_err := strconv.Atoi(os.Getenv("COMMUNICATION_PORT"))
 

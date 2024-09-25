@@ -1,5 +1,9 @@
 package kademlia
 
+import(
+	"fmt"
+)
+
 const bucketSize = 20
 
 // RoutingTable definition
@@ -24,6 +28,13 @@ func (routingTable *RoutingTable) AddContact(contact Contact) {
 	bucketIndex := routingTable.getBucketIndex(contact.ID)
 	bucket := routingTable.buckets[bucketIndex]
 	bucket.AddContact(contact)
+}
+
+// RemoveContact remove a contact from the correct Bucket by ID
+func (routingTable *RoutingTable) RemoveContact(contact_id *KademliaID) {
+	bucketIndex := routingTable.getBucketIndex(contact_id)
+	bucket := routingTable.buckets[bucketIndex]
+	bucket.RemoveContact(contact_id)
 }
 
 // FindClosestContacts finds the count closest Contacts to the target in the RoutingTable
@@ -66,4 +77,20 @@ func (routingTable *RoutingTable) getBucketIndex(id *KademliaID) int {
 	}
 
 	return IDLength*8 - 1
+}
+
+func (routingTable *RoutingTable) String() string{
+	var result string
+	for i, bucket := range routingTable.buckets {
+		result += fmt.Sprintf("B%d: {", i)
+		for e := bucket.list.Front(); e != nil; e = e.Next() {
+			contact := e.Value.(Contact)
+			result += fmt.Sprintf("(%s, %s)", contact.ID.String(), contact.Address)
+			if e.Next() != nil {
+				result += ", "
+			}
+		}
+		result += "}\n"
+	}
+	return result
 }

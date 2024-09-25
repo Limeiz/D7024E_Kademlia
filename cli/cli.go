@@ -43,14 +43,25 @@ func Init(server_port int) {
 		SendHTTPRequest(server_port, url_path)
 		break
 
-	case "id":
+	case "show-id":
 		url_path := fmt.Sprintf("/getid")
 		SendHTTPRequest(server_port, url_path)
 		break
 
+	case "show-routing-table":
+		url_path := fmt.Sprintf("/show-routing-table")
+		SendHTTPRequest(server_port, url_path)
+		break
+
 	case "help":
-		fmt.Println("Commands:")
+		fmt.Println("RPC commands:")
 		fmt.Println("ping <to>")
+
+		fmt.Println("Show commands:")
+		fmt.Println("Usage: show-[node_variable]")
+		fmt.Println("Availible commands:")
+		fmt.Println("show-id")
+		fmt.Println("show-routing-table")
 		break
 
 	default:

@@ -36,10 +36,16 @@ func (network *Network) PingController(response http.ResponseWriter, request *ht
 		return
 	}
 
-	_, err := network.SendMessageAndWaitByIP(ping_address, PING, REQUEST, nil)
+	new_contact := NewContact(NewRandomKademliaID(), ping_address)
+	err := network.Node.Ping(&new_contact)
 	if err != nil {
 		fmt.Fprintf(response, "Error: <REQUEST,PING> cound not be sent: %v", err)
 		return
 	}
 	fmt.Fprintf(response, "<RESPONSE,PING> recieved from: %s", ping_address)
+}
+
+func (network *Network) ShowRoutingTableController(response http.ResponseWriter, request *http.Request) {
+	BeginResponse(request, "/show-routing-table")
+	fmt.Fprintf(response, "Routing Table:\n%s", network.Node.Routes.String())
 }

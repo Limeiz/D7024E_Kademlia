@@ -5,11 +5,10 @@
 # command line flags, in order to actually get any replicas started. That
 # command requires that a docker swarm is already running in order to function.
 
-version: "3"
+version: "3.3"
 services:
-  kademlia-bootstrap:
+  bootstrap:
     image: kadlab:latest
-    container_name: kademlia-bootstrap
     environment:
       - BOOTSTRAP_NODE=172.28.0.254
       - NODE_TYPE=bootstrap
@@ -21,7 +20,7 @@ services:
       kademlia_network:
         ipv4_address: 172.28.0.254
   
-  kademlia-node:
+  node:
     image: kadlab:latest
     stdin_open: true
     tty: true

@@ -104,6 +104,7 @@ func (network *Network) ServerInit() {
 	http.HandleFunc("/", network.DefaultController)  // Corrected net.http to net/http
 	http.HandleFunc("/ping", network.PingController) // Corrected net.http to net/http
 	http.HandleFunc("/getid", network.GetID)
+	http.HandleFunc("/show-routing-table", network.ShowRoutingTableController)
 }
 
 func (network *Network) ServerStart(port int) {
@@ -133,18 +134,14 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 		responseChan, exists := network.ResponseMap[message.Header.MessageID]
 		if exists {
 			responseChan <- message
-			delete(network.ResponseMap, message.Header.MessageID)
 		} else {
-			log.Printf("No waiting request for message ID %s from %s\n", message.Header.MessageID.String(), addr)
+			log.Printf("No waiting request for message[%s] from %s\n", message.Header.MessageID.String(), addr)
 		}
 	} else {
+		sender_contact := NewContact(&message.Header.SenderID, message.Header.SenderIP)
 		// Handle request messages (e.g., PING) here
 		if message.Header.Type == PING {
-			new_contact := NewContact(&message.Header.SenderID, message.Header.SenderIP)
-			err := network.SendMessage(&new_contact, PING, RESPONSE, nil, &message.Header.MessageID)
-			if err != nil {
-				log.Printf("Failed to send RESPONSE PING to %s: %v", new_contact.Address, err)
-			}
+			network.Node.Pong(&sender_contact, &message.Header.MessageID)
 		}
 	}
 }
@@ -246,13 +243,14 @@ func (network *Network) SendMessageAndWait(contact *Contact, messageType Message
 	if err != nil {
 		return MessageData{}, err
 	}
-
+	
 	select {
 	case response := <-responseChan:
 		network.ResponseMapMutex.Lock()
 		delete(network.ResponseMap, *messageID)
 		network.ResponseMapMutex.Unlock()
 		return response, nil
+
 	case <-time.After(5 * time.Second):
 		network.ResponseMapMutex.Lock()
 		delete(network.ResponseMap, *messageID)
