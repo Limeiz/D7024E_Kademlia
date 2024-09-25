@@ -11,6 +11,7 @@ services:
     image: kadlab:latest
     container_name: kademlia-bootstrap
     environment:
+      - BOOTSTRAP_NODE=172.28.0.254
       - NODE_TYPE=bootstrap
       - BOOTSTRAP_ID=FABFABFABFABFABFABFABFABFABFABFABFABFAB0
       - COMMUNICATION_PORT=8080

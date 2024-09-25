@@ -21,13 +21,9 @@ func main() {
 		cli.Init(server_port)
 	} else {
 		var kademlia_node_state *kademlia.Kademlia
-		if os.Getenv("NODE_TYPE") == "bootstrap" {
-			bootstrap_id_string := os.Getenv("BOOTSTRAP_ID")
-			bootstrap_node_id := kademlia.NewKademliaID(bootstrap_id_string)
-			kademlia_node_state = kademlia.InitNode(bootstrap_node_id)
-		} else {
-			kademlia_node_state = kademlia.InitNode()
-		}
+		bootstrap_id_string := os.Getenv("BOOTSTRAP_ID")
+		bootstrap_node_id := kademlia.NewKademliaID(bootstrap_id_string)
+		kademlia_node_state = kademlia.InitNode(bootstrap_node_id)
 
 		net := kademlia.InitNetwork(kademlia_node_state)
 		log.Println("Starting kademlia on node ", kademlia_node_state.Routes.Me.ID)

@@ -4,17 +4,17 @@ type Kademlia struct {
 	Routes *RoutingTable
 }
 
-func InitNode(premade_id ...*KademliaID) *Kademlia {
+func InitNode(bootstrap_id *KademliaID) *Kademlia {
 	kademlia_node := Kademlia{}
-	var new_me_contact Contact
-	if len(premade_id) > 0 {
-		new_id := premade_id[0]
-		new_me_contact = NewContact(new_id, GetLocalIP())
-	} else {
+	bootstrap_contact = NewContact(bootstrap_id, os.Getenv("BOOTSTRAP_NODE"))
+	if os.Getenv("NODE_TYPE") == "bootstrap"{
+		kademlia_node.Routes = NewRoutingTable(bootstrap_contact)
+	}else{
 		new_id := NewRandomKademliaID()
-		new_me_contact = NewContact(new_id, GetLocalIP())
+		new_me_contact := NewContact(new_id, GetLocalIP())
+		kademlia_node.Routes = NewRoutingTable(new_me_contact)
+		kademlia_node.Routes.AddContact(bootstrap_contact)
 	}
-	kademlia_node.Routes = NewRoutingTable(new_me_contact)
 	return &kademlia_node
 }
 
