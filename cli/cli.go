@@ -2,10 +2,28 @@ package cli
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
-	"io/ioutil"
 )
+
+func SendHTTPRequest(server_port int, http_path string) {
+	url := fmt.Sprintf("http://localhost:%d%s", server_port, http_path)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		fmt.Printf("Failed to send message: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response: %v\n", err)
+		return
+	}
+	fmt.Printf("Response: %s\n", body)
+}
 
 func Init(server_port int) {
 	if len(os.Args) < 2 {
@@ -20,21 +38,14 @@ func Init(server_port int) {
 			return
 		}
 		ip := os.Args[2]
-		url := fmt.Sprintf("http://localhost:%d/ping?to=%s", server_port, ip)
+		url_path := fmt.Sprintf("/ping?to=%s", ip)
 
-		resp, err := http.Get(url)
-		if err != nil {
-			fmt.Printf("Failed to send ping: %v\n", err)
-			return
-		}
-		defer resp.Body.Close()
+		SendHTTPRequest(server_port, url_path)
+		break
 
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Printf("Failed to read response: %v\n", err)
-			return
-		}
-		fmt.Printf("Response: %s\n", body)
+	case "id":
+		url_path := fmt.Sprintf("/getid")
+		SendHTTPRequest(server_port, url_path)
 		break
 
 	case "help":

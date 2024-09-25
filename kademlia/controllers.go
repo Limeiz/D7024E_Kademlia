@@ -22,6 +22,12 @@ func (network *Network) DefaultController(response http.ResponseWriter, request 
 	io.WriteString(response, "/ping?to=<address>\n")
 }
 
+func (network *Network) GetID(response http.ResponseWriter, request *http.Request) {
+	BeginResponse(request, "/getid")
+
+	fmt.Fprintf(response, "This node's id is: %s", network.Node.Routes.Me.ID.String())
+}
+
 func (network *Network) PingController(response http.ResponseWriter, request *http.Request) {
 	BeginResponse(request, "/ping")
 	ping_address := request.FormValue("to")
