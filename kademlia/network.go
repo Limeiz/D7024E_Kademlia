@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 	"errors"
 	"log"
-	"math/rand"
 	"net"
 	"net/http"
 	"strconv"
@@ -16,7 +15,7 @@ import (
 
 type Network struct {
 	Node             *Kademlia
-	ResponseMap      map[uint64]chan MessageData
+	ResponseMap      map[KademliaID]chan MessageData
 	ResponseMapMutex sync.Mutex
 	Port             int
 }
@@ -26,7 +25,6 @@ type MessageDirection uint8
 
 const (
 	PING MessageType = 0
-	PONG MessageType = 1
 )
 
 const (
@@ -39,9 +37,9 @@ type MessageHeader struct {
 	HeaderTag    [4]byte
 	Direction    MessageDirection
 	Type         MessageType
-	MessageID    uint64
+	MessageID    KademliaID
 	SenderID     KademliaID
-	RecieverID   KademliaID
+	ReceiverID   KademliaID
 	BodyLength   uint32
 	SenderIP     string
 	ReceiverIP   string
@@ -57,8 +55,6 @@ func MessageTypeToString(message_type MessageType) string {
 	switch message_type {
 	case PING:
 		return "PING"
-	case PONG:
-		return "PONG"
 	default:
 		return "NIL"
 	}
@@ -99,7 +95,7 @@ func DeserializeMessage(data []byte) (MessageData, error) {
 func InitNetwork(node *Kademlia) *Network {
 	network := &Network{
 		Node:        node,
-		ResponseMap: make(map[uint64]chan MessageData),
+		ResponseMap: make(map[KademliaID]chan MessageData),
 		Port:        8080,
 	}
 	return network
@@ -132,7 +128,7 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 		log.Printf("Failed to deserialize message from %s: %v\n", addr, err)
 		return
 	}
-	log.Printf("Received a %s %s message from %s\n", MessageDirectionToString(message.Header.Direction), MessageTypeToString(message.Header.Type), addr)
+	log.Printf("Received a <%s,%s> message[%s] from %s\n", MessageDirectionToString(message.Header.Direction), MessageTypeToString(message.Header.Type), message.Header.MessageID.String(), addr)
 
 	if message.Header.Direction == RESPONSE {
 		responseChan, exists := network.ResponseMap[message.Header.MessageID]
@@ -140,15 +136,15 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 			responseChan <- message
 			delete(network.ResponseMap, message.Header.MessageID)
 		} else {
-			log.Printf("No waiting request for message ID %d from %s\n", message.Header.MessageID, addr)
+			log.Printf("No waiting request for message ID %s from %s\n", message.Header.MessageID.String(), addr)
 		}
 	} else {
 		// Handle request messages (e.g., PING) here
 		if message.Header.Type == PING {
 			new_contact := NewContact(&message.Header.SenderID, message.Header.SenderIP)
-			err := network.SendMessage(&new_contact, PONG, RESPONSE, nil, message.Header.MessageID)
+			err := network.SendMessage(&new_contact, PING, RESPONSE, nil, &message.Header.MessageID)
 			if err != nil {
-				log.Printf("Failed to send PONG to %s: %v", new_contact.Address, err)
+				log.Printf("Failed to send RESPONSE PING to %s: %v", new_contact.Address, err)
 			}
 		}
 	}
@@ -192,72 +188,75 @@ func GetLocalIP() string {
 	return localAddr.IP.String()
 }
 
-func GenerateMessageID() uint64 {
-	return uint64(rand.Uint32())<<32 + uint64(rand.Uint32())
-}
-
-func (network *Network) SendMessage(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...uint64) error {
-	var messageID uint64
+func (network *Network) SendMessage(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...*KademliaID) error {
+	var messageID *KademliaID
 	if len(message_id) > 0 {
 		messageID = message_id[0]
 	} else {
-		messageID = GenerateMessageID()
+		messageID = NewRandomKademliaID()
 	}
+
 	messageHeader := MessageHeader{
 		HeaderLength: uint32(binary.Size(MessageHeader{})),
 		HeaderTag:    [4]byte{'K', 'A', 'D', 'M'},
 		Direction:    messageDir,
 		Type:         messageType,
-		MessageID:    messageID,
+		MessageID:    *messageID,
 		SenderID:     *network.Node.Routes.Me.ID,
-		RecieverID:   *contact.ID,
+		ReceiverID:   *contact.ID,
 		BodyLength:   uint32(len(data)),
 		SenderIP:     GetLocalIP(),
 		ReceiverIP:   contact.Address,
 	}
+
 	messageData := MessageData{
 		Header: messageHeader,
 		Data:   data,
 	}
+
 	messageBytes, err := SerializeMessage(messageData)
 	if err != nil {
 		return err
 	}
+
 	conn, err := net.Dial("udp", contact.Address+":"+strconv.Itoa(network.Port))
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	log.Printf("Writing message of type %s to %s \n", MessageTypeToString(messageData.Header.Type), messageData.Header.ReceiverIP)
+	log.Printf("Writing message[%s] of type <%s,%s> to %s \n", messageData.Header.MessageID.String(), MessageDirectionToString(messageData.Header.Direction), MessageTypeToString(messageData.Header.Type), messageData.Header.ReceiverIP)
 	_, err = conn.Write(messageBytes)
 	return err
 }
 
-func (network *Network) SendMessageAndWait(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...uint64) (MessageData, error) {
-	var messageID uint64
+func (network *Network) SendMessageAndWait(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...*KademliaID) (MessageData, error) {
+	var messageID *KademliaID
 	if len(message_id) > 0 {
 		messageID = message_id[0]
 	} else {
-		messageID = GenerateMessageID()
+		messageID = NewRandomKademliaID()
 	}
+
 	responseChan := make(chan MessageData)
 	network.ResponseMapMutex.Lock()
-	network.ResponseMap[messageID] = responseChan
+	network.ResponseMap[*messageID] = responseChan
 	network.ResponseMapMutex.Unlock()
+
 	err := network.SendMessage(contact, messageType, messageDir, data, messageID)
 	if err != nil {
 		return MessageData{}, err
 	}
+
 	select {
 	case response := <-responseChan:
 		network.ResponseMapMutex.Lock()
-		delete(network.ResponseMap, messageID)
+		delete(network.ResponseMap, *messageID)
 		network.ResponseMapMutex.Unlock()
 		return response, nil
 	case <-time.After(5 * time.Second):
 		network.ResponseMapMutex.Lock()
-		delete(network.ResponseMap, messageID)
+		delete(network.ResponseMap, *messageID)
 		network.ResponseMapMutex.Unlock()
 		return MessageData{}, errors.New("timeout waiting for response")
 	}

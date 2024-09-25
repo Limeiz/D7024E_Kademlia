@@ -38,8 +38,8 @@ func (network *Network) PingController(response http.ResponseWriter, request *ht
 
 	_, err := network.SendMessageAndWaitByIP(ping_address, PING, REQUEST, nil)
 	if err != nil {
-		fmt.Fprintf(response, "Error: Ping cound not be sent: %v", err)
+		fmt.Fprintf(response, "Error: <REQUEST,PING> cound not be sent: %v", err)
 		return
 	}
-	fmt.Fprintf(response, "Pong recieved from: %s", ping_address)
+	fmt.Fprintf(response, "<RESPONSE,PING> recieved from: %s", ping_address)
 }
