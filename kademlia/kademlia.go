@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-const k = 4
+const k = 5 // change back to 20 later
 const alpha = 3
 const KademliaIDLength = 160 //right?
 
@@ -109,7 +109,7 @@ func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativ
 		<-doneChan
 	}
 
-	candidates.Sort()
+	candidates.Sort() // the canditades should be modified in processResponses
 	return candidates.GetContacts(k)
 }
 
@@ -180,7 +180,7 @@ func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, con
 }
 
 func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact) ([]byte, error) {
-	target, err := DeserializeSingleContact(*data) // assumes msg data only holds target contact now
+	target, err := DeserializeSingleContact(*data) // assumes msg data only holds target contact
 	if err != nil {
 		log.Printf("Failed to deserialize target contact: %v", err)
 		return nil, err
@@ -203,7 +203,7 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact
 }
 
 func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
-	kademlia.LookupContact(&kademlia.Routes.Me)
+	// kademlia.LookupContact(&kademlia.Routes.Me)
 
 	closestContacts := kademlia.Routes.FindClosestContacts(targetID, k)
 	if len(closestContacts) == 0 {
@@ -228,7 +228,7 @@ func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
 				Address: contact.Address,
 			}
 
-			// Send a ping to the nodes in this bucket
+			// Send a ping to the nodes in this bucket, try find_node and iterative if doesn't work, have never come this far
 			log.Printf("Refreshing bucket %d by pinging contact %s\n", i, contact.Address)
 			kademlia.Network.Node.Ping(&targetContact)
 		}
