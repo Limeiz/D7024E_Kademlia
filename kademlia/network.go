@@ -24,8 +24,11 @@ type MessageType uint8
 type MessageDirection uint8
 
 const (
-	PING      MessageType = 0
-	FIND_NODE MessageType = 1
+	PING            MessageType = 0
+	FIND_NODE       MessageType = 1
+	FIND_VALUE      MessageType = 2
+	RETURN_VALUE    MessageType = 3
+	RETURN_CONTACTS MessageType = 4
 )
 
 const (
@@ -57,6 +60,8 @@ func MessageTypeToString(message_type MessageType) string {
 		return "PING"
 	case FIND_NODE:
 		return "FIND_NODE"
+	case FIND_VALUE:
+		return "FIND_VALUE"
 	default:
 		return "NIL"
 	}
@@ -146,12 +151,20 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 		if message.Header.Type == PING {
 			network.Node.Pong(&sender_contact, &message.Header.MessageID)
 		}
-		// SendMessage(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...*KademliaID) error {
+
 		if message.Header.Type == FIND_NODE {
-			response, err := network.Node.ProcessFindContactMessage(&message.Data) //fix error
-			err = network.SendMessage(&sender_contact, FIND_NODE, RESPONSE, response, &message.Header.MessageID)
+			responseData, err := network.Node.ProcessFindContactMessage(&message.Data)
+			err = network.SendMessage(&sender_contact, FIND_NODE, RESPONSE, responseData, &message.Header.MessageID)
 			if err != nil {
 				log.Printf("Failed to send FIND_NODE to %s: %v", sender_contact.Address, err)
+			}
+		}
+
+		if message.Header.Type == FIND_VALUE {
+			responseData, msgType, err := network.Node.ProcessFindValueMessage(&message.Data) //msgType to signal if it is value or contacts
+			err = network.SendMessage(&sender_contact, msgType, RESPONSE, responseData, &message.Header.MessageID)
+			if err != nil {
+				log.Printf("Failed to send FIND_VALUE to %s: %v", sender_contact.Address, err)
 			}
 		}
 	}
