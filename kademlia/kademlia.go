@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-const k = 20
+const k = 4
 const alpha = 3
 const KademliaIDLength = 160 //right?
 
@@ -35,13 +35,12 @@ func InitNode(bootstrap_id *KademliaID) *Kademlia {
 	bootstrap_contact := NewContact(bootstrap_id, os.Getenv("BOOTSTRAP_NODE"))
 	if os.Getenv("NODE_TYPE") == "bootstrap" {
 		kademlia_node.Routes = NewRoutingTable(bootstrap_contact)
-		kademlia_node.RefreshBuckets(bootstrap_id) // if we start this one first, wont need this?
 	} else {
 		new_id := NewRandomKademliaID()
 		new_me_contact := NewContact(new_id, GetLocalIP())
 		kademlia_node.Routes = NewRoutingTable(new_me_contact)
 		kademlia_node.Routes.AddContact(bootstrap_contact)
-		kademlia_node.RefreshBuckets(new_id) // look up ourself to fill Routes (step 3 and 4 in join)
+		// kademlia_node.RefreshBuckets(new_id) // look up ourself to fill Routes (step 3 and 4 in join)
 	}
 
 	return &kademlia_node
@@ -105,7 +104,7 @@ func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativ
 			}(contact)
 		}
 
-		go processResponses(kademlia, responseChan, &candidates.contacts, visitedNodes, doneChan, closestNode, activeRPCs, *target, candidates) //ugly
+		go processResponses(kademlia, responseChan, &candidates.contacts, visitedNodes, doneChan, closestNode, activeRPCs, *target) //ugly
 
 		<-doneChan
 	}
@@ -136,7 +135,7 @@ func (kademlia *Kademlia) SendFindNodeRPC(contact *Contact, target *Contact) ([]
 	return contacts, nil
 }
 
-func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, contactCandidates *[]Contact, visitedNodes map[KademliaID]bool, doneChan chan struct{}, closestNode Contact, activeRPCs int, target Contact, candidates *ContactCandidates) {
+func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, contactCandidates *[]Contact, visitedNodes map[KademliaID]bool, doneChan chan struct{}, closestNode Contact, activeRPCs int, target Contact) {
 	for len(*contactCandidates) < k && activeRPCs > 0 {
 		select {
 		case response := <-responseChan:
@@ -180,7 +179,7 @@ func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, con
 	}
 }
 
-func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte) ([]byte, error) {
+func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact) ([]byte, error) {
 	target, err := DeserializeSingleContact(*data) // assumes msg data only holds target contact now
 	if err != nil {
 		log.Printf("Failed to deserialize target contact: %v", err)
@@ -189,7 +188,8 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte) ([]byte, error
 	targetID := target.ID
 
 	closestContacts := kademlia.Routes.FindClosestContacts(targetID, k)
-	// should we update routingtable anything?
+
+	kademlia.Routes.AddContact(sender)
 
 	// Serialize the list of closest contacts
 	responseBytes, err := SerializeContacts(closestContacts)
@@ -198,11 +198,13 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte) ([]byte, error
 		return nil, err
 	}
 
-	log.Printf("Sent closest contacts")
+	log.Printf("Sent closest contacts: ", responseBytes)
 	return responseBytes, err
 }
 
 func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
+	kademlia.LookupContact(&kademlia.Routes.Me)
+
 	closestContacts := kademlia.Routes.FindClosestContacts(targetID, k)
 	if len(closestContacts) == 0 {
 		log.Println("No contacts found for the target node")
@@ -211,6 +213,8 @@ func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
 
 	closestNeighbor := closestContacts[0]
 	closestNeighborBucketIndex := kademlia.Routes.getBucketIndex(closestNeighbor.ID)
+
+	// log.Println("should be bootstrap", closestContacts[0].ID)
 
 	// Iterate over buckets further away than the closest neighbor
 	for i := closestNeighborBucketIndex + 1; i < len(kademlia.Routes.buckets); i++ {
@@ -224,12 +228,9 @@ func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
 				Address: contact.Address,
 			}
 
-			// Send the FIND_NODE message to the nodes in this bucket
-			log.Printf("Refreshing bucket %d by querying contact %s\n", i, contact.Address)
-			_, err := kademlia.SendFindNodeRPC(&contact, &targetContact) // think about this again, maybe messed up order, should maybe be iterative find node?
-			if err != nil {
-				log.Printf("Failed to send FIND_NODE to %s: %v", contact.Address, err)
-			}
+			// Send a ping to the nodes in this bucket
+			log.Printf("Refreshing bucket %d by pinging contact %s\n", i, contact.Address)
+			kademlia.Network.Node.Ping(&targetContact)
 		}
 	}
 }

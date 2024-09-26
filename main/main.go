@@ -27,6 +27,10 @@ func main() {
 
 		net := kademlia.InitNetwork(kademlia_node_state)
 		kademlia_node_state.Network = net
+
+		if os.Getenv("NODE_TYPE") != "bootstrap" {
+			kademlia_node_state.RefreshBuckets(kademlia_node_state.Routes.Me.ID) // have to do this after net is set up
+		}
 		log.Println("Starting kademlia on node ", kademlia_node_state.Routes.Me.ID)
 		comm_port, comm_err := strconv.Atoi(os.Getenv("COMMUNICATION_PORT"))
 
