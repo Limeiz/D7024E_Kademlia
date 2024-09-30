@@ -27,8 +27,9 @@ const (
 	PING            MessageType = 0
 	FIND_NODE       MessageType = 1
 	FIND_VALUE      MessageType = 2
-	RETURN_VALUE    MessageType = 3
-	RETURN_CONTACTS MessageType = 4
+	RETURN_VALUE    MessageType = 3 // This isn't really needed since a return value message can be defined as <RESPONSE, FIND_VALUE>
+	RETURN_CONTACTS MessageType = 4 // Same as above
+	STORE			MessageType = 5
 )
 
 const (
@@ -62,6 +63,8 @@ func MessageTypeToString(message_type MessageType) string {
 		return "FIND_NODE"
 	case FIND_VALUE:
 		return "FIND_VALUE"
+	case STORE:
+		return "STORE"
 	default:
 		return "NIL"
 	}
@@ -150,9 +153,7 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 		// Handle request messages (e.g., PING) here
 		if message.Header.Type == PING {
 			network.Node.Pong(&sender_contact, &message.Header.MessageID)
-		}
-
-		if message.Header.Type == FIND_NODE {
+		}else if message.Header.Type == FIND_NODE {
 			responseData, err := network.Node.ProcessFindContactMessage(&message.Data, sender_contact)
 			if err != nil {
 				log.Printf("Failed to process FIND_NODE message %s: %v", sender_contact.Address, err)
@@ -161,9 +162,7 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 			if err != nil {
 				log.Printf("Failed to send FIND_NODE to %s: %v", sender_contact.Address, err)
 			}
-		}
-
-		if message.Header.Type == FIND_VALUE {
+		}else if message.Header.Type == FIND_VALUE {
 			responseData, msgType, err := network.Node.ProcessFindValueMessage(&message.Data) //msgType to signal if it is value or contacts
 			if err != nil {
 				log.Printf("Failed to process FIND_VALUE message %s: %v", sender_contact.Address, err)
@@ -172,6 +171,9 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 			if err != nil {
 				log.Printf("Failed to send FIND_VALUE to %s: %v", sender_contact.Address, err)
 			}
+		}else if message.Header.Type == STORE{
+			network.Node.RecieveStoreRPC(&message.Data)
+			
 		}
 	}
 }

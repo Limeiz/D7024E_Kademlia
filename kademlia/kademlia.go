@@ -3,6 +3,7 @@ package kademlia
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"os"
@@ -10,7 +11,6 @@ import (
 
 const k = 5 // change back to 20 later
 const alpha = 3
-const KademliaIDLength = 160 //right?
 
 type Kademlia struct {
 	Routes  *RoutingTable
@@ -26,6 +26,35 @@ type FindValueResponse struct {
 type ContactResponse struct { // not needed anymore, redo
 	contacts []Contact
 	err      error
+}
+
+type StoreData struct{
+	Key KademliaID
+	Value string
+}
+
+// Please use these instead of creating a seriliaze and deserialize for every type of struct
+func SerializeData[T any](data T) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := gob.NewEncoder(&buffer)
+	if err := encoder.Encode(data); err != nil {
+		return nil, err
+	}
+
+	return buffer.Bytes(), nil
+}
+
+func DeserializeData[T any](data []byte) (T, error) {
+	var result T
+	buffer := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(buffer)
+
+	// Decode the data into the result
+	if err := decoder.Decode(&result); err != nil {
+		return result, err
+	}
+
+	return result, nil
 }
 
 func InitNode(bootstrap_id *KademliaID) *Kademlia {
@@ -62,6 +91,35 @@ func (kademlia *Kademlia) Ping(contact *Contact) error {
 func (kademlia *Kademlia) Pong(contact *Contact, message_id *KademliaID) {
 	go kademlia.Network.SendMessage(contact, PING, RESPONSE, nil, message_id)
 	kademlia.Routes.AddContact(*contact)
+}
+
+func (kademlia *Kademlia) SendStoreRPC(contact *Contact, key *KademliaID, data string) error{
+	store_message := StoreData{
+		Key: *key,
+		Value: data,
+	}
+
+	serialized_data, data_err := SerializeData(store_message)
+	if data_err != nil{
+		log.Printf("Error: Could not serialize store data!")
+		return fmt.Errorf("Error: Could not serialize store data!")
+	}
+	_, err := kademlia.Network.SendMessageAndWait(contact, STORE, REQUEST, serialized_data)
+	if err != nil {
+		log.Printf("Error: Store could not be sent to %s\n", contact.Address)
+		return fmt.Errorf("Error: Store could not be sent to %s\n", contact.Address)
+	}
+
+	return nil
+
+}
+
+func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte){
+	deserialized_data, err := DeserializeData[StoreData](*data)
+	if err != nil{
+		log.Printf("Error: Could not deserialize store data")
+	}
+	kademlia.Storage[deserialized_data.Key] = deserialized_data.Value
 }
 
 func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativeFindNode
@@ -343,8 +401,8 @@ func SerializeKademliaID(id *KademliaID) ([]byte, error) {
 }
 
 func DeserializeKademliaID(data []byte) (*KademliaID, error) {
-	if len(data) != KademliaIDLength {
-		return nil, fmt.Errorf("invalid KademliaID length: expected %d, got %d", KademliaIDLength, len(data))
+	if len(data) != IDLength {
+		return nil, fmt.Errorf("invalid KademliaID length: expected %d, got %d", IDLength, len(data))
 	}
 	var id KademliaID
 	copy(id[:], data)
