@@ -24,11 +24,9 @@ type MessageType uint8
 type MessageDirection uint8
 
 const (
-	PING            MessageType = 0
-	FIND_NODE       MessageType = 1
-	FIND_VALUE      MessageType = 2
-	RETURN_VALUE    MessageType = 3
-	RETURN_CONTACTS MessageType = 4
+	PING       MessageType = 0
+	FIND_NODE  MessageType = 1
+	FIND_VALUE MessageType = 2
 )
 
 const (
@@ -164,11 +162,11 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 		}
 
 		if message.Header.Type == FIND_VALUE {
-			responseData, msgType, err := network.Node.ProcessFindValueMessage(&message.Data) //msgType to signal if it is value or contacts
+			responseData, err := network.Node.ProcessFindValueMessage(&message.Data)
 			if err != nil {
 				log.Printf("Failed to process FIND_VALUE message %s: %v", sender_contact.Address, err)
 			}
-			err = network.SendMessage(&sender_contact, msgType, RESPONSE, responseData, &message.Header.MessageID)
+			err = network.SendMessage(&sender_contact, FIND_VALUE, RESPONSE, responseData, &message.Header.MessageID)
 			if err != nil {
 				log.Printf("Failed to send FIND_VALUE to %s: %v", sender_contact.Address, err)
 			}
