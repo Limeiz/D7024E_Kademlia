@@ -9,7 +9,6 @@ import (
 	"os"
 )
 
-const k = 5 // change back to 20 later
 const alpha = 3
 
 type Kademlia struct {
@@ -141,7 +140,7 @@ func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativ
 
 	visitedNodes := make(map[KademliaID]bool)
 
-	for len(candidates.contacts) < k {
+	for len(candidates.contacts) < IDLength {
 		alphaContacts := []Contact{} // the nodes that we will send RPCs to
 		for _, contact := range candidates.contacts {
 			if !visitedNodes[*contact.ID] && len(alphaContacts) < alpha {
@@ -168,7 +167,7 @@ func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativ
 	}
 
 	candidates.Sort() // the canditades should be modified in processResponses
-	return candidates.GetContacts(k)
+	return candidates.GetContacts(IDLength)
 }
 
 func (kademlia *Kademlia) SendFindNodeRPC(contact *Contact, target *Contact) ([]Contact, error) {
@@ -194,7 +193,7 @@ func (kademlia *Kademlia) SendFindNodeRPC(contact *Contact, target *Contact) ([]
 }
 
 func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, contactCandidates *[]Contact, visitedNodes map[KademliaID]bool, doneChan chan struct{}, closestNode Contact, activeRPCs int, target Contact) {
-	for len(*contactCandidates) < k && activeRPCs > 0 {
+	for len(*contactCandidates) < IDLength && activeRPCs > 0 {
 		select {
 		case response := <-responseChan:
 			activeRPCs--
@@ -208,7 +207,7 @@ func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, con
 				newContact.CalcDistance(target.ID)
 				kademlia.Routes.AddContact(newContact)
 
-				if len(*contactCandidates) < k {
+				if len(*contactCandidates) < IDLength {
 					*contactCandidates = append(*contactCandidates, newContact)
 				}
 
@@ -245,7 +244,7 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact
 	}
 	targetID := target.ID
 
-	closestContacts := kademlia.Routes.FindClosestContacts(targetID, k)
+	closestContacts := kademlia.Routes.FindClosestContacts(targetID, IDLength)
 
 	kademlia.Routes.AddContact(sender)
 
@@ -263,7 +262,7 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact
 func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
 	// kademlia.LookupContact(&kademlia.Routes.Me)
 
-	closestContacts := kademlia.Routes.FindClosestContacts(targetID, k)
+	closestContacts := kademlia.Routes.FindClosestContacts(targetID, IDLength)
 	if len(closestContacts) == 0 {
 		log.Println("No contacts found for the target node")
 		return
@@ -344,7 +343,7 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact) { // itera
 				if !visitedNodes[*contact.ID] {
 					candidates.Append([]Contact{contact})
 					visitedNodes[*contact.ID] = true
-					if len(candidates.contacts) < k {
+					if len(candidates.contacts) < IDLength {
 						goSendFindValueRPC(contact)
 					}
 				}
@@ -354,7 +353,7 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact) { // itera
 			if activeRPCs == 0 {
 				doneChan <- struct{}{}
 				candidates.Sort()
-				return "", candidates.GetContacts(k) // Search did NOT result in a found value, return closest contacts
+				return "", candidates.GetContacts(IDLength) // Search did NOT result in a found value, return closest contacts
 			}
 		}
 	}
@@ -375,21 +374,17 @@ func (kademlia *Kademlia) SendFindValueRPC(contact *Contact, valueID *KademliaID
 
 	response := FindValueResponse{}
 
-	// check if data contain contacts or value
-	if data.Header.Type == RETURN_VALUE {
-		response.Value = string(data.Data)
-	} else if data.Header.Type == RETURN_CONTACTS {
-		contacts, err := DeserializeContacts(data.Data)
-		if err != nil {
-			log.Printf("Failed to deserialize contacts: %v", err)
-			return FindValueResponse{}, err
-		}
-		response.ClosestContacts = contacts
-	} else {
-		log.Printf("Received unexpected message type: %v", data.Header.Type)
-		return FindValueResponse{}, fmt.Errorf("unexpected message type: %v", data.Header.Type)
+	// Try parse response for value then contacts
+	response.Value = string(data.Data)
+	if len(response.Value) > 0 {
+		return response, nil
 	}
-
+	contacts, err := DeserializeContacts(data.Data)
+	if err != nil {
+		log.Printf("Failed to deserialize contacts: %v", err)
+		return FindValueResponse{}, err
+	}
+	response.ClosestContacts = contacts
 	return response, nil
 }
 
@@ -409,29 +404,29 @@ func DeserializeKademliaID(data []byte) (*KademliaID, error) {
 	return &id, nil
 }
 
-func (kademlia *Kademlia) ProcessFindValueMessage(data *[]byte) ([]byte, MessageType, error) {
+func (kademlia *Kademlia) ProcessFindValueMessage(data *[]byte) ([]byte, error) {
 	valueID, err := DeserializeKademliaID(*data)
 	if err != nil {
 		log.Printf("Failed to deserialize value ID: %v", err)
-		return nil, RETURN_CONTACTS, err
+		return nil, err
 	}
 
 	// Check if the value is stored locally.
 	value, exists := kademlia.Storage[*valueID]
 	if exists {
 		serializedValue := []byte(value)
-		return serializedValue, RETURN_VALUE, nil
+		return serializedValue, nil
 	}
 
 	// If the value is not found, return the closest contacts to the value ID.
-	closestContacts := kademlia.Routes.FindClosestContacts(valueID, k)
+	closestContacts := kademlia.Routes.FindClosestContacts(valueID, IDLength)
 	responseData, err := SerializeContacts(closestContacts)
 	if err != nil {
 		log.Printf("Failed to serialize closest contacts: %v", err)
-		return nil, RETURN_CONTACTS, err
+		return nil, err
 	}
 
-	return responseData, RETURN_CONTACTS, nil
+	return responseData, nil
 }
 
 func (kademlia *Kademlia) Store(data []byte) {
