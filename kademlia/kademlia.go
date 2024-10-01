@@ -2,8 +2,10 @@ package kademlia
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/binary"
 	"encoding/gob"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -27,8 +29,8 @@ type ContactResponse struct { // not needed anymore, redo
 	err      error
 }
 
-type StoreData struct{
-	Key KademliaID
+type StoreData struct {
+	Key   KademliaID
 	Value string
 }
 
@@ -92,14 +94,14 @@ func (kademlia *Kademlia) Pong(contact *Contact, message_id *KademliaID) {
 	kademlia.Routes.AddContact(*contact)
 }
 
-func (kademlia *Kademlia) SendStoreRPC(contact *Contact, key *KademliaID, data string) error{
+func (kademlia *Kademlia) SendStoreRPC(contact *Contact, key *KademliaID, data string) error {
 	store_message := StoreData{
-		Key: *key,
+		Key:   *key,
 		Value: data,
 	}
 
 	serialized_data, data_err := SerializeData(store_message)
-	if data_err != nil{
+	if data_err != nil {
 		log.Printf("Error: Could not serialize store data!")
 		return fmt.Errorf("Error: Could not serialize store data!")
 	}
@@ -113,9 +115,9 @@ func (kademlia *Kademlia) SendStoreRPC(contact *Contact, key *KademliaID, data s
 
 }
 
-func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte){
+func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte) {
 	deserialized_data, err := DeserializeData[StoreData](*data)
-	if err != nil{
+	if err != nil {
 		log.Printf("Error: Could not deserialize store data")
 	}
 	kademlia.Storage[deserialized_data.Key] = deserialized_data.Value
@@ -430,7 +432,29 @@ func (kademlia *Kademlia) ProcessFindValueMessage(data *[]byte) ([]byte, error) 
 }
 
 func (kademlia *Kademlia) Store(data []byte) {
-	// TODO
+	hexEncodedKey := kademlia.HashData(string(data))
+	kademliaID := NewKademliaID(hexEncodedKey)
+	//fmt.Printf("Data hash (key): %s\n", hexEncodedKey)
+
+	targetContact := NewContact(kademliaID, "")
+
+	closestContacts := kademlia.LookupContact(&targetContact)
+
+	for _, contact := range closestContacts {
+		go func(contact Contact) {
+			err := kademlia.SendStoreRPC(&contact, kademliaID, string(data))
+			if err != nil {
+				log.Printf("Failed to send STORE RPC to %s: %v", contact.Address, err)
+			}
+		}(contact)
+	}
+}
+
+func (kademlia *Kademlia) HashData(data string) (hexEncodedKey string) {
+	key := sha1.New()
+	key.Write([]byte(data))
+	hexEncodedKey = hex.EncodeToString(key.Sum(nil))
+	return
 }
 
 func SerializeSingleContact(contact Contact) ([]byte, error) {
