@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 )
 
@@ -40,6 +41,24 @@ func Init(server_port int) {
 		ip := os.Args[2]
 		url_path := fmt.Sprintf("/ping?to=%s", ip)
 
+		SendHTTPRequest(server_port, url_path)
+
+	case "put":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: put <data>")
+			return
+		}
+		data := url.QueryEscape(os.Args[2]) // in case of special characters
+		url_path := fmt.Sprintf("/put?data=%s", data)
+		SendHTTPRequest(server_port, url_path)
+
+	case "get":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: get <hash>")
+			return
+		}
+		hash := url.QueryEscape(os.Args[2])
+		url_path := fmt.Sprintf("/get?hash=%s", hash)
 		SendHTTPRequest(server_port, url_path)
 
 	case "show-id":

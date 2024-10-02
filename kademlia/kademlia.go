@@ -294,7 +294,7 @@ func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
 	}
 }
 
-func (kademlia *Kademlia) LookupData(hash string) (string, []Contact) { // iterativeFindValue
+func (kademlia *Kademlia) LookupData(hash string) (string, []Contact, error) { // iterativeFindValue
 	var value string
 	candidates := &ContactCandidates{}
 	initialContacts := kademlia.Routes.FindClosestContacts(NewKademliaID(hash), alpha)
@@ -337,7 +337,7 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact) { // itera
 			if response.Value != "" {
 				value = response.Value
 				doneChan <- struct{}{}
-				return value, nil
+				return value, nil, nil //rewrite to return the contact as well
 			}
 
 			// If the node returned closer contacts, add them to the candidates list
@@ -355,7 +355,7 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact) { // itera
 			if activeRPCs == 0 {
 				doneChan <- struct{}{}
 				candidates.Sort()
-				return "", candidates.GetContacts(IDLength) // Search did NOT result in a found value, return closest contacts
+				return "", candidates.GetContacts(IDLength), nil // Search did NOT result in a found value, return closest contacts, rewrite to align with get
 			}
 		}
 	}
@@ -431,7 +431,7 @@ func (kademlia *Kademlia) ProcessFindValueMessage(data *[]byte) ([]byte, error) 
 	return responseData, nil
 }
 
-func (kademlia *Kademlia) Store(data []byte) {
+func (kademlia *Kademlia) Store(data []byte) (string, error) {
 	hexEncodedKey := kademlia.HashData(string(data))
 	kademliaID := NewKademliaID(hexEncodedKey)
 	//fmt.Printf("Data hash (key): %s\n", hexEncodedKey)
@@ -448,6 +448,7 @@ func (kademlia *Kademlia) Store(data []byte) {
 			}
 		}(contact)
 	}
+	return hexEncodedKey, nil // add error response
 }
 
 func (kademlia *Kademlia) HashData(data string) (hexEncodedKey string) {
