@@ -41,17 +41,18 @@ func Init(server_port int) {
 		url_path := fmt.Sprintf("/ping?to=%s", ip)
 
 		SendHTTPRequest(server_port, url_path)
-		break
 
 	case "show-id":
 		url_path := fmt.Sprintf("/getid")
 		SendHTTPRequest(server_port, url_path)
-		break
 
 	case "show-routing-table":
 		url_path := fmt.Sprintf("/show-routing-table")
 		SendHTTPRequest(server_port, url_path)
-		break
+
+	case "show-storage":
+		url_path := fmt.Sprintf("/show-storage")
+		SendHTTPRequest(server_port, url_path)
 
 	case "help":
 		fmt.Println("RPC commands:")
@@ -62,7 +63,6 @@ func Init(server_port int) {
 		fmt.Println("Availible commands:")
 		fmt.Println("show-id")
 		fmt.Println("show-routing-table")
-		break
 
 	default:
 		fmt.Println("Unknown command:", os.Args[1])

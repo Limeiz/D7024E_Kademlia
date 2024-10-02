@@ -49,3 +49,12 @@ func (network *Network) ShowRoutingTableController(response http.ResponseWriter,
 	BeginResponse(request, "/show-routing-table")
 	fmt.Fprintf(response, "Routing Table:\n%s", network.Node.Routes.String())
 }
+
+func (network *Network) ShowStorageController(response http.ResponseWriter, request *http.Request) {
+	BeginResponse(request, "/show-storage")
+	responseString := "Stored data:\n"
+	for key, value := range network.Node.Storage {
+		responseString += fmt.Sprintf("Key: %s, Value: %s\n", key.String(), value)
+	}
+	fmt.Fprintf(response, "%s", responseString)
+}
