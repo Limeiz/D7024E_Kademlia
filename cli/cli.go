@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,7 +18,7 @@ func SendHTTPRequest(server_port int, http_path string) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("Failed to read response: %v\n", err)
 		return
@@ -73,15 +73,24 @@ func Init(server_port int) {
 		url_path := fmt.Sprintf("/show-storage")
 		SendHTTPRequest(server_port, url_path)
 
+	case "exit":
+		fmt.Println("Exiting node...")
+		os.Exit(0)
+
 	case "help":
 		fmt.Println("RPC commands:")
 		fmt.Println("ping <to>")
+		fmt.Println("put <data>")
+		fmt.Println("get <hash>")
 
 		fmt.Println("Show commands:")
 		fmt.Println("Usage: show-[node_variable]")
 		fmt.Println("Availible commands:")
 		fmt.Println("show-id")
 		fmt.Println("show-routing-table")
+		fmt.Println("show-storage")
+
+		fmt.Println("exit")
 
 	default:
 		fmt.Println("Unknown command:", os.Args[1])

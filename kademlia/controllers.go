@@ -30,6 +30,7 @@ func (network *Network) GetID(response http.ResponseWriter, request *http.Reques
 
 func (network *Network) PingController(response http.ResponseWriter, request *http.Request) {
 	BeginResponse(request, "/ping")
+
 	ping_address := request.FormValue("to")
 	if ping_address == "" {
 		http.Error(response, "Missing 'to' parameter", http.StatusBadRequest)
@@ -48,22 +49,31 @@ func (network *Network) PingController(response http.ResponseWriter, request *ht
 func (network *Network) PutController(response http.ResponseWriter, request *http.Request) {
 	BeginResponse(request, "/put")
 	data := request.FormValue("data")
+
+	fmt.Printf("Received data: %s\n", data)
+
 	if data == "" {
 		http.Error(response, "Missing 'data' parameter", http.StatusBadRequest)
 		return
 	}
 
 	hash, err := network.Node.Store([]byte(data))
+
 	if err != nil {
 		fmt.Fprintf(response, "Error: Could not store data: %v", err)
 		return
 	}
-	fmt.Fprintf(response, "Data succesfully stored with hash: %s", hash)
+
+	fmt.Fprintf(response, "Data successfully stored with hash: %s", hash)
+	fmt.Printf("Data stored with hash: %s\n", hash)
 }
 
 func (network *Network) GetController(response http.ResponseWriter, request *http.Request) {
 	BeginResponse(request, "/get")
 	hash := request.FormValue("hash")
+
+	fmt.Printf("Received hash: %s\n", hash)
+
 	if hash == "" {
 		http.Error(response, "Missing 'hash' parameter", http.StatusBadRequest)
 		return
@@ -71,6 +81,7 @@ func (network *Network) GetController(response http.ResponseWriter, request *htt
 
 	data, nodes, err := network.Node.LookupData(hash)
 	node := nodes[0]
+
 	if err != nil {
 		fmt.Fprintf(response, "Error: Could not find data: %v", err)
 		return
