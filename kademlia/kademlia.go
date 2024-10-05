@@ -436,6 +436,9 @@ func (kademlia *Kademlia) Store(data []byte) (string, error) {
 	kademliaID := NewKademliaID(hexEncodedKey)
 	//fmt.Printf("Data hash (key): %s\n", hexEncodedKey)
 
+	kademlia.Storage[*kademliaID] = string(data)
+	fmt.Printf("Stored locally on node: %s\n", kademlia.Routes.Me.Address)
+
 	targetContact := NewContact(kademliaID, "")
 
 	closestContacts := kademlia.LookupContact(&targetContact)
