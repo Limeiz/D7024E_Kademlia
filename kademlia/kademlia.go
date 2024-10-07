@@ -2,13 +2,12 @@ package kademlia
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"encoding/binary"
 	"encoding/gob"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
+	"time"
 )
 
 const alpha = 3
@@ -121,6 +120,7 @@ func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte) {
 		log.Printf("Error: Could not deserialize store data")
 	}
 	kademlia.Storage[deserialized_data.Key] = deserialized_data.Value
+	log.Printf("Data stored in node %s\n", kademlia.Routes.Me.ID.String())
 }
 
 func (kademlia *Kademlia) LookupContact(target *Contact) []Contact { // iterativeFindNode
@@ -191,6 +191,7 @@ func (kademlia *Kademlia) SendFindNodeRPC(contact *Contact, target *Contact) ([]
 		return nil, err
 	}
 
+	log.Printf("Received response from contact: %s with %d contacts", contact.ID.String(), len(contacts))
 	return contacts, nil
 }
 
@@ -228,6 +229,10 @@ func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, con
 				}
 			}
 
+		case <-time.After(time.Second * 60): // added time out
+			log.Println("Timeout reached, stopping lookup.")
+			doneChan <- struct{}{}
+
 		default:
 			// Search is finished
 			if activeRPCs == 0 {
@@ -248,7 +253,10 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact
 
 	closestContacts := kademlia.Routes.FindClosestContacts(targetID, IDLength)
 
-	kademlia.Routes.AddContact(sender)
+	// if sender not in routes, add it
+	if !kademlia.Routes.IsContactInTable(&sender) {
+		kademlia.Routes.AddContact(sender)
+	}
 
 	// Serialize the list of closest contacts
 	responseBytes, err := SerializeContacts(closestContacts)
@@ -432,7 +440,7 @@ func (kademlia *Kademlia) ProcessFindValueMessage(data *[]byte) ([]byte, error) 
 }
 
 func (kademlia *Kademlia) Store(data []byte) (string, error) {
-	hexEncodedKey := kademlia.HashData(string(data))
+	hexEncodedKey := HashData(string(data))
 	kademliaID := NewKademliaID(hexEncodedKey)
 	//fmt.Printf("Data hash (key): %s\n", hexEncodedKey)
 
@@ -442,6 +450,7 @@ func (kademlia *Kademlia) Store(data []byte) (string, error) {
 	targetContact := NewContact(kademliaID, "")
 
 	closestContacts := kademlia.LookupContact(&targetContact)
+	fmt.Printf("Closest contact received: %v\n", closestContacts)
 
 	for _, contact := range closestContacts {
 		go func(contact Contact) {
@@ -452,13 +461,6 @@ func (kademlia *Kademlia) Store(data []byte) (string, error) {
 		}(contact)
 	}
 	return hexEncodedKey, nil // add error response
-}
-
-func (kademlia *Kademlia) HashData(data string) (hexEncodedKey string) {
-	key := sha1.New()
-	key.Write([]byte(data))
-	hexEncodedKey = hex.EncodeToString(key.Sum(nil))
-	return
 }
 
 func SerializeSingleContact(contact Contact) ([]byte, error) {

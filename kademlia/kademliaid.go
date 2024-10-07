@@ -1,6 +1,7 @@
 package kademlia
 
 import (
+	"crypto/sha1"
 	"encoding/hex"
 	"math/rand"
 )
@@ -53,7 +54,7 @@ func (kademliaID KademliaID) Equals(otherKademliaID *KademliaID) bool {
 	return true
 }
 
-// CalcDistance returns a new instance of a KademliaID that is built 
+// CalcDistance returns a new instance of a KademliaID that is built
 // through a bitwise XOR operation betweeen kademliaID and target
 func (kademliaID KademliaID) CalcDistance(target *KademliaID) *KademliaID {
 	result := KademliaID{}
@@ -66,4 +67,11 @@ func (kademliaID KademliaID) CalcDistance(target *KademliaID) *KademliaID {
 // String returns a simple string representation of a KademliaID
 func (kademliaID *KademliaID) String() string {
 	return hex.EncodeToString(kademliaID[0:IDLength])
+}
+
+func HashData(data string) (hexEncodedKey string) {
+	key := sha1.New()
+	key.Write([]byte(data))
+	hexEncodedKey = hex.EncodeToString(key.Sum(nil))
+	return
 }

@@ -1,6 +1,6 @@
 package kademlia
 
-import(
+import (
 	"fmt"
 )
 
@@ -79,7 +79,7 @@ func (routingTable *RoutingTable) getBucketIndex(id *KademliaID) int {
 	return IDLength*8 - 1
 }
 
-func (routingTable *RoutingTable) String() string{
+func (routingTable *RoutingTable) String() string {
 	var result string
 	for i, bucket := range routingTable.buckets {
 		result += fmt.Sprintf("B%d: {", i)
@@ -93,4 +93,20 @@ func (routingTable *RoutingTable) String() string{
 		result += "}\n"
 	}
 	return result
+}
+
+// Check if a given contact is already in the routing table
+func (rt *RoutingTable) IsContactInTable(contact *Contact) bool {
+	for _, bucket := range rt.buckets {
+		if bucket == nil {
+			continue
+		}
+
+		for e := bucket.list.Front(); e != nil; e = e.Next() {
+			if e.Value.(Contact).ID.Equals(contact.ID) {
+				return true
+			}
+		}
+	}
+	return false
 }
