@@ -271,7 +271,7 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact
 		return nil, err
 	}
 
-	log.Printf("Sent closest contacts: %v", responseBytes)
+	log.Printf("Sent closest contacts from ProcessFindContactMessage")
 	return responseBytes, err
 }
 
