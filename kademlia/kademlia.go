@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -214,8 +215,13 @@ func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, con
 					*contactCandidates = append(*contactCandidates, newContact)
 				}
 
-				if newContact.Less(&closestNode) {
-					closestNode = newContact
+				// sort based on distance to target
+				sort.Slice(*contactCandidates, func(i, j int) bool {
+					return (*contactCandidates)[i].Less(&(*contactCandidates)[j])
+				})
+
+				if (*contactCandidates)[0].Less(&closestNode) {
+					closestNode = (*contactCandidates)[0]
 				}
 
 				// If we haven't visited this contact, send another RPC
@@ -232,6 +238,7 @@ func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, con
 		case <-time.After(time.Second * 60): // added time out
 			log.Println("Timeout reached, stopping lookup.")
 			doneChan <- struct{}{}
+			return
 
 		default:
 			// Search is finished
@@ -241,6 +248,8 @@ func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, con
 			}
 		}
 	}
+	log.Println("Processed all contact candidates. Signaling doneChan.")
+	doneChan <- struct{}{}
 }
 
 func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact) ([]byte, error) {
@@ -253,10 +262,7 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact
 
 	closestContacts := kademlia.Routes.FindClosestContacts(targetID, IDLength)
 
-	// if sender not in routes, add it
-	if !kademlia.Routes.IsContactInTable(&sender) {
-		kademlia.Routes.AddContact(sender)
-	}
+	kademlia.Routes.AddContact(sender)
 
 	// Serialize the list of closest contacts
 	responseBytes, err := SerializeContacts(closestContacts)
@@ -265,7 +271,7 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact
 		return nil, err
 	}
 
-	log.Printf("Sent closest contacts: %v", responseBytes)
+	log.Printf("Sent closest contacts from ProcessFindContactMessage")
 	return responseBytes, err
 }
 

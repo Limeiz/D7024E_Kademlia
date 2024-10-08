@@ -23,11 +23,14 @@ func NewRoutingTable(me Contact) *RoutingTable {
 	return routingTable
 }
 
-// AddContact add a new contact to the correct Bucket
+// AddContact add a new contact to the correct Bucket, ONLY if not Me or already in it
 func (routingTable *RoutingTable) AddContact(contact Contact) {
 	bucketIndex := routingTable.getBucketIndex(contact.ID)
 	bucket := routingTable.buckets[bucketIndex]
-	bucket.AddContact(contact)
+	if contact != routingTable.Me || routingTable.IsContactInTable(&contact) {
+		bucket.AddContact(contact)
+	}
+
 }
 
 // RemoveContact remove a contact from the correct Bucket by ID
@@ -96,8 +99,8 @@ func (routingTable *RoutingTable) String() string {
 }
 
 // Check if a given contact is already in the routing table
-func (rt *RoutingTable) IsContactInTable(contact *Contact) bool {
-	for _, bucket := range rt.buckets {
+func (routingTable *RoutingTable) IsContactInTable(contact *Contact) bool {
+	for _, bucket := range routingTable.buckets {
 		if bucket == nil {
 			continue
 		}
