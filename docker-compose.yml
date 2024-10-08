@@ -19,36 +19,36 @@ services:
     networks:
       kademlia_network:
         ipv4_address: 192.168.0.107
-  
+
   node:
     image: kadlab:latest
     stdin_open: true
     tty: true
     deploy:
       mode: replicated
-      replicas: 10
+      replicas: 20
       restart_policy:
         condition: on-failure
         delay: 5s
         max_attempts: 3
         window: 10s
     environment:
-      - BOOTSTRAP_NODE=192.168.0.107  # IP address of the bootstrap node
+      - BOOTSTRAP_NODE=192.168.0.107 # IP address of the bootstrap node
       - NODE_TYPE=node
       - COMMUNICATION_PORT=8080
       - SERVER_PORT=3000
       - CONTAINER_NAME=${HOSTNAME}
       - BOOTSTRAP_ID=FABFABFABFABFABFABFABFABFABFABFABFABFAB0
+      - NETWORK_TIMEOUT=5 # In seconds
     networks:
       kademlia_network:
     depends_on:
-      - bootstrap  # Ensure bootstrap starts before node services
+      - bootstrap # Ensure bootstrap starts before node services
 
 networks:
   kademlia_network:
     driver: bridge
     ipam:
       config:
-        - subnet: 192.168.0.0/16  # Define a custom subnet for static IPs
-
+        - subnet: 192.168.0.0/16 # Define a custom subnet for static IPs
 

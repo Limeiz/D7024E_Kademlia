@@ -467,13 +467,13 @@ func SerializeSingleContact(contact Contact) ([]byte, error) {
 	buffer := new(bytes.Buffer)
 
 	// Serialize the KademliaID (assuming KademliaID is a struct or type that implements binary encoding)
-	if err := binary.Write(buffer, binary.LittleEndian, contact.ID); err != nil {
+	if err := binary.Write(buffer, binary.BigEndian, contact.ID); err != nil {
 		return nil, fmt.Errorf("failed to serialize KademliaID: %v", err)
 	}
 
 	// Serialize the Address length as uint8
 	addressLength := uint8(len(contact.Address))
-	if err := binary.Write(buffer, binary.LittleEndian, addressLength); err != nil {
+	if err := binary.Write(buffer, binary.BigEndian, addressLength); err != nil {
 		return nil, fmt.Errorf("failed to serialize address length: %v", err)
 	}
 
@@ -510,7 +510,7 @@ func DeserializeContacts(b []byte) ([]Contact, error) {
 		}
 		contacts = append(contacts, contact)
 
-		contactSize := binary.Size(*contact.ID) + 1 + len(contact.Address) // ID size + 1 byte for address length + address size
+		contactSize := binary.Size(*contact.ID) + 1 + len(contact.Address)
 		if len(data) < contactSize {
 			return nil, fmt.Errorf("insufficient data for the next contact")
 		}
@@ -525,13 +525,13 @@ func DeserializeSingleContact(b []byte) (Contact, error) {
 	var id KademliaID
 	buffer := bytes.NewBuffer(b)
 
-	if err := binary.Read(buffer, binary.LittleEndian, &id); err != nil {
+	if err := binary.Read(buffer, binary.BigEndian, &id); err != nil {
 		return contact, fmt.Errorf("failed to deserialize KademliaID: %v", err)
 	}
 	contact.ID = &id
 
 	var addressLength uint8
-	if err := binary.Read(buffer, binary.LittleEndian, &addressLength); err != nil {
+	if err := binary.Read(buffer, binary.BigEndian, &addressLength); err != nil {
 		return contact, fmt.Errorf("failed to deserialize address length: %v", err)
 	}
 
