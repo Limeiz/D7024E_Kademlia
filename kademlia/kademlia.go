@@ -199,6 +199,7 @@ func processResponses(kademlia *Kademlia, responseChan chan ContactResponse, con
 	for len(*contactCandidates) < IDLength && activeRPCs > 0 {
 		select {
 		case response := <-responseChan:
+			log.Printf("Response on ContactResponse channel")
 			activeRPCs--
 			if response.err != nil {
 				log.Printf("Error in response: %v", response.err)

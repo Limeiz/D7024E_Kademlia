@@ -27,7 +27,10 @@ func NewRoutingTable(me Contact) *RoutingTable {
 func (routingTable *RoutingTable) AddContact(contact Contact) {
 	bucketIndex := routingTable.getBucketIndex(contact.ID)
 	bucket := routingTable.buckets[bucketIndex]
-	bucket.AddContact(contact)
+	if contact != routingTable.Me {
+		bucket.AddContact(contact)
+	}
+
 }
 
 // RemoveContact remove a contact from the correct Bucket by ID
