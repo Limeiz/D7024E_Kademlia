@@ -229,7 +229,9 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 	log.Printf("Received a <%s,%s> message[%s] from %s\n", MessageDirectionToString(message.Header.Direction), MessageTypeToString(message.Header.Type), message.Header.MessageID.String(), addr)
 
 	if message.Header.Direction == RESPONSE {
+		network.ResponseMapMutex.Lock()
 		responseChan, exists := network.ResponseMap[message.Header.MessageID]
+		network.ResponseMapMutex.Unlock()
 		if exists {
 			responseChan <- message
 		} else {
