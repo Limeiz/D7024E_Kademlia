@@ -6,8 +6,10 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -15,10 +17,10 @@ import (
 const alpha = 3
 
 type Kademlia struct {
-	Routes  		*RoutingTable
-	Network 		*Network
-	Storage 		map[KademliaID]string
-	ShutdownChan 	chan struct{}	
+	Routes       *RoutingTable
+	Network      *Network
+	Storage      map[KademliaID]string
+	ShutdownChan chan struct{}
 }
 
 type FindValueResponse struct {
@@ -62,7 +64,7 @@ func DeserializeData[T any](data []byte) (T, error) {
 
 func InitNode(bootstrap_id *KademliaID) *Kademlia {
 	kademlia_node := Kademlia{
-		Storage: make(map[KademliaID]string),
+		Storage:      make(map[KademliaID]string),
 		ShutdownChan: make(chan struct{}),
 	}
 	bootstrap_contact := NewContact(bootstrap_id, os.Getenv("BOOTSTRAP_NODE"))
@@ -79,17 +81,23 @@ func InitNode(bootstrap_id *KademliaID) *Kademlia {
 	return &kademlia_node
 }
 
-func (kademlia *Kademlia) InitNetwork(target *Contact){
+func (kademlia *Kademlia) InitNetwork(target *Contact) {
 	attempt := 0
 	// Sometimes when it doesn't work, kick it in the butt again
 	// UDP can miss some messages since it get congested, so refer to message above
-	for attempt < 3{
-		log.Printf("LookupContact attempt %d \n", attempt + 1)
+	nodes, err := strconv.Atoi(os.Getenv("NUMBER_NODES"))
+	if err != nil {
+		nodes = 50
+	}
+	for attempt < (nodes / 5) {
+		log.Printf("LookupContact attempt %d \n", attempt+1)
 		contacts, error := kademlia.LookupContact(target)
-		log.Printf("LookupContact attempt %d finished \n", attempt + 1)
+		log.Printf("LookupContact attempt %d finished \n", attempt+1)
 		log.Printf("LookupContact produced %d contacts \n", len(contacts))
-		if error != nil || len(contacts) < 2{
-			log.Printf("Error: LookupContact attempt %d failed \n", attempt + 1)
+		if error != nil || len(contacts) < 2 {
+			log.Printf("Error: LookupContact attempt %d failed \n", attempt+1)
+			delay := 3.00 + rand.Float64()*(5.00-3.01)
+			time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 			attempt++
 			continue
 		}
@@ -146,80 +154,80 @@ func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte) {
 }
 
 func (kademlia *Kademlia) LookupContact(target *Contact) ([]Contact, error) {
-    done := make(chan []Contact)
-    ret := make([]Contact, 0, bucketSize)
-    frontier := make([]Contact, 0)
-    seen := make(map[KademliaID]bool)
+	done := make(chan []Contact, bucketSize)
+	ret := make([]Contact, 0, bucketSize)
+	frontier := make([]Contact, 0) // shortlist
+	seen := make(map[KademliaID]bool)
 
-    initialContacts := kademlia.Routes.FindClosestContacts(target.ID, bucketSize)
-    if len(initialContacts) == 0 {
-        log.Println("No contacts found in the routing table.")
-        return nil, fmt.Errorf("No contacts found in the routing table.")
-    }
-    for _, contact := range initialContacts {
-        ret = append(ret, contact)
-        frontier = append(frontier, contact)
-        seen[*contact.ID] = true
-    }
+	initialContacts := kademlia.Routes.FindClosestContacts(target.ID, bucketSize)
+	if len(initialContacts) == 0 {
+		log.Println("No contacts found in the routing table.")
+		return nil, fmt.Errorf("No contacts found in the routing table.")
+	}
+	for _, contact := range initialContacts {
+		ret = append(ret, contact)
+		frontier = append(frontier, contact)
+		seen[*contact.ID] = true
+	}
 
-    pending := 0
-    for i := 0; i < alpha && len(frontier) > 0; i++ {
-        sort.Slice(frontier, func(i, j int) bool {
-            return frontier[i].Less(&frontier[j])
-        })
-        pending++
-        contact := frontier[0]
-        frontier = frontier[1:]
-        go kademlia.SendFindNode(contact, target, done)
-    }
+	pending := 0
+	for i := 0; i < alpha && len(frontier) > 0; i++ {
+		sort.Slice(frontier, func(i, j int) bool {
+			return frontier[i].Less(&frontier[j])
+		})
+		pending++
+		contact := frontier[0]
+		frontier = frontier[1:]
+		go kademlia.SendFindNode(contact, target, done)
+	}
 
-    for pending > 0 {
-        nodes := <-done
-        pending--
-        if nodes == nil {
-            continue
-        }
-        for _, node := range nodes {
-            if !seen[*node.ID] {
-                seen[*node.ID] = true
-                node.CalcDistance(target.ID)
-                ret = append(ret, node)
-                frontier = append(frontier, node)
-            }
-        }
+	for pending > 0 {
+		nodes := <-done
+		pending--
+		if nodes == nil {
+			continue
+		}
+		for _, node := range nodes {
+			if !seen[*node.ID] {
+				seen[*node.ID] = true
+				node.CalcDistance(target.ID)
+				ret = append(ret, node)
+				frontier = append(frontier, node)
+			}
+		}
 
-        for pending < alpha && len(frontier) > 0 {
-            sort.Slice(frontier, func(i, j int) bool {
-                return frontier[i].Less(&frontier[j])
-            })
-            pending++
-            contact := frontier[0]
-            frontier = frontier[1:]
-            go kademlia.SendFindNode(contact, target, done)
-        }
-    }
+		for len(frontier) > 0 { //pending < alpha &&
+			sort.Slice(frontier, func(i, j int) bool {
+				return frontier[i].Less(&frontier[j])
+			})
+			pending++
+			contact := frontier[0]
+			frontier = frontier[1:]
+			go kademlia.SendFindNode(contact, target, done)
+		}
+	}
 
-    sort.Slice(ret, func(i, j int) bool {
-        return ret[i].Less(&ret[j])
-    })
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].Less(&ret[j])
+	})
 
-    if len(ret) > bucketSize {
-        ret = ret[:bucketSize]
-    }
+	if len(ret) > bucketSize {
+		ret = ret[:bucketSize]
+	}
 
-    return ret, nil
+	return ret, nil
 }
 
 func (kademlia *Kademlia) SendFindNode(contact Contact, target *Contact, done chan<- []Contact) {
-    response, err := kademlia.SendFindNodeRPC(&contact, target)
-    if err != nil {
-        log.Printf("Error contacting %v: %v", contact.Address, err)
-        done <- nil
-        return
-    }
-    done <- response
+	response, err := kademlia.SendFindNodeRPC(&contact, target)
+	if err != nil {
+		log.Printf("Error contacting %v: %v ", contact.Address, err)
+		kademlia.Ping(&contact) // Ping will remove the contact if it doesnt work
+		done <- nil
+		return
+	}
+	done <- response
 }
-
 
 func (kademlia *Kademlia) SendFindNodeRPC(contact *Contact, target *Contact) ([]Contact, error) {
 	serializedTarget, err := SerializeSingleContact(*target)
@@ -301,105 +309,112 @@ func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
 }
 
 func (kademlia *Kademlia) LookupData(hash string) (string, []Contact, error) {
-    type FindValueResult struct {
-        response FindValueResponse
-        err      error
-    }
 
-    done := make(chan FindValueResult)
-    ret := make([]Contact, 0, bucketSize)
-    frontier := make([]Contact, 0)
-    seen := make(map[KademliaID]bool)
-    targetID := NewKademliaID(hash)
+	data, exists := kademlia.Storage[*NewKademliaID(hash)]
 
-    initialContacts := kademlia.Routes.FindClosestContacts(targetID, bucketSize)
-    if len(initialContacts) == 0 {
-        log.Println("No contacts found in the routing table.")
-        return "", nil, fmt.Errorf("No contacts found in the routing table.")
-    }
-    for _, contact := range initialContacts {
-        ret = append(ret, contact)
-        frontier = append(frontier, contact)
-        seen[*contact.ID] = true
-    }
+	if exists {
+		return data, []Contact{kademlia.Routes.Me}, nil
+	}
 
-    pending := 0
-    var mu sync.Mutex
+	type FindValueResult struct {
+		response FindValueResponse
+		err      error
+	}
 
-    sendFindValue := func(contact Contact) {
-        go func(c Contact) {
-            response, err := kademlia.SendFindValueRPC(&c, targetID)
-            done <- FindValueResult{response: response, err: err}
-        }(contact)
-    }
+	done := make(chan FindValueResult)
+	ret := make([]Contact, 0, bucketSize)
+	frontier := make([]Contact, 0)
+	seen := make(map[KademliaID]bool)
+	targetID := NewKademliaID(hash)
 
-    mu.Lock()
-    alphaContacts := min(alpha, len(frontier))
-    for i := 0; i < alphaContacts; i++ {
-        contact := frontier[0]
-        frontier = frontier[1:]
-        pending++
-        sendFindValue(contact)
-    }
-    mu.Unlock()
+	initialContacts := kademlia.Routes.FindClosestContacts(targetID, bucketSize)
+	if len(initialContacts) == 0 {
+		log.Println("No contacts found in the routing table.")
+		return "", nil, fmt.Errorf("No contacts found in the routing table.")
+	}
+	for _, contact := range initialContacts {
+		ret = append(ret, contact)
+		frontier = append(frontier, contact)
+		seen[*contact.ID] = true
+	}
 
-    for {
-        mu.Lock()
-        if pending == 0 && len(frontier) == 0 {
-            mu.Unlock()
-            break
-        }
-        mu.Unlock()
+	pending := 0
+	var mu sync.Mutex
 
-        select {
-        case res := <-done:
-            mu.Lock()
-            pending--
-            mu.Unlock()
+	sendFindValue := func(contact Contact) {
+		go func(c Contact) {
+			response, err := kademlia.SendFindValueRPC(&c, targetID)
+			done <- FindValueResult{response: response, err: err}
+		}(contact)
+	}
 
-            if res.err != nil {
-                log.Printf("Error contacting node: %v", res.err)
-                continue
-            }
+	mu.Lock()
+	alphaContacts := min(alpha, len(frontier))
+	for i := 0; i < alphaContacts; i++ {
+		contact := frontier[0]
+		frontier = frontier[1:]
+		pending++
+		sendFindValue(contact)
+	}
+	mu.Unlock()
 
-            if res.response.Value != "" {
-                return res.response.Value, nil, nil
-            }
-            mu.Lock()
-            for _, node := range res.response.ClosestContacts {
-                if !seen[*node.ID] {
-                    seen[*node.ID] = true
-                    node.CalcDistance(targetID)
-                    ret = append(ret, node)
-                    frontier = append(frontier, node)
-                }
-            }
-            mu.Unlock()
-            mu.Lock()
-            for pending < alpha && len(frontier) > 0 {
-                contact := frontier[0]
-                frontier = frontier[1:]
-                pending++
-                sendFindValue(contact)
-            }
-            mu.Unlock()
+	for {
+		mu.Lock()
+		if pending == 0 && len(frontier) == 0 {
+			mu.Unlock()
+			break
+		}
+		mu.Unlock()
 
-        case <-time.After(time.Second * 10):
-            log.Println("LookupData timed out.")
-            return "", ret, fmt.Errorf("LookupData timed out")
-        }
-    }
+		select {
+		case res := <-done:
+			mu.Lock()
+			pending--
+			mu.Unlock()
 
-    // Finalize the result
-    sort.Slice(ret, func(i, j int) bool {
-        return ret[i].Less(&ret[j])
-    })
+			if res.err != nil {
+				log.Printf("Error contacting node: %v", res.err)
+				continue
+			}
 
-    if len(ret) > bucketSize {
-        ret = ret[:bucketSize]
-    }
+			if res.response.Value != "" {
+				return res.response.Value, []Contact{res.response.ClosestContacts[0]}, nil
+			}
+			mu.Lock()
+			for _, node := range res.response.ClosestContacts {
+				if !seen[*node.ID] {
+					seen[*node.ID] = true
+					node.CalcDistance(targetID)
+					ret = append(ret, node)
+					frontier = append(frontier, node)
+				}
+			}
+			mu.Unlock()
+			mu.Lock()
+			for pending < alpha && len(frontier) > 0 {
+				contact := frontier[0]
+				frontier = frontier[1:]
+				pending++
+				sendFindValue(contact)
+			}
+			mu.Unlock()
 
-    return "", ret, nil
+		case <-time.After(time.Second * 10):
+			log.Println("LookupData timed out.")
+			return "", ret, fmt.Errorf("LookupData timed out")
+		}
+	}
+
+	// Finalize the result
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].Less(&ret[j])
+	})
+
+	if len(ret) > bucketSize {
+		ret = ret[:bucketSize]
+	}
+
+	return "", ret, nil
 }
 
 func (kademlia *Kademlia) SendFindValueRPC(contact *Contact, valueID *KademliaID) (FindValueResponse, error) {
@@ -431,7 +446,7 @@ func (kademlia *Kademlia) SendFindValueRPC(contact *Contact, valueID *KademliaID
 	return response, nil
 }
 
-func (kademlia *Kademlia) Quit(){
+func (kademlia *Kademlia) Quit() {
 	log.Printf("Quitting... Good bye! \n")
 	close(kademlia.ShutdownChan)
 }
@@ -488,7 +503,7 @@ func (kademlia *Kademlia) Store(data []byte) (string, error) {
 	targetContact := NewContact(kademliaID, "")
 
 	closestContacts, lookup_err := kademlia.LookupContact(&targetContact)
-	if lookup_err != nil{
+	if lookup_err != nil {
 		return "", lookup_err
 	}
 	fmt.Printf("Closest contact received: %v\n", closestContacts)

@@ -27,7 +27,7 @@ services:
     tty: true
     deploy:
       mode: replicated
-      replicas: 20
+      replicas: 50
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -41,6 +41,7 @@ services:
       - CONTAINER_NAME=${HOSTNAME}
       - BOOTSTRAP_ID=FABFABFABFABFABFABFABFABFABFABFABFABFAB0
       - NETWORK_TIMEOUT=30 # In seconds
+      - NUMBER_NODES=50
     networks:
       kademlia_network:
     depends_on:
