@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 	"io"
+	"context"
 )
 
 type Network struct {
@@ -203,21 +204,42 @@ func (network *Network) ServerInit() {
 	http.HandleFunc("/getid", network.GetID)
 	http.HandleFunc("/show-routing-table", network.ShowRoutingTableController)
 	http.HandleFunc("/show-storage", network.ShowStorageController)
+	http.HandleFunc("/exit", network.ExitController)
 }
 
 func (network *Network) ServerStart(port int) {
-	network.Port = port
-	addr := net.TCPAddr{
-		Port: port,
-		IP:   net.ParseIP("0.0.0.0"),
-	}
-	err := http.ListenAndServe(addr.String(), nil)
+    network.Port = port
+    addr := net.TCPAddr{
+        Port: port,
+        IP:   net.ParseIP("0.0.0.0"),
+    }
 
-	if errors.Is(err, http.ErrServerClosed) {
-		log.Printf("Server closing \n")
-	} else if err != nil {
-		log.Printf("Server error: %s\n", err)
-	}
+    server := &http.Server{
+        Addr: addr.String(),
+    }
+
+    errChan := make(chan error, 1)
+
+    go func() {
+        if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            errChan <- err
+        }
+    }()
+
+    select {
+    case <-network.Node.ShutdownChan:
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+        if err := server.Shutdown(ctx); err != nil {
+            log.Printf("Server Shutdown Failed: %+v", err)
+        } else {
+            log.Printf("Server Shutdown gracefully")
+        }
+    case err := <-errChan:
+        if err != nil {
+            log.Printf("Server error: %s\n", err)
+        }
+    }
 }
 
 func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) {
@@ -245,20 +267,20 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 		} else if message.Header.Type == FIND_NODE {
 			responseData, err := network.Node.ProcessFindContactMessage(&message.Data, sender_contact)
 			if err != nil {
-				log.Printf("Failed to process FIND_NODE message %s: %v", sender_contact.Address, err)
+				log.Printf("Failed to process FIND_NODE message %s: %v \n", sender_contact.Address, err)
 			}
 			err = network.SendMessage(&sender_contact, FIND_NODE, RESPONSE, responseData, &message.Header.MessageID)
 			if err != nil {
-				log.Printf("Failed to send FIND_NODE to %s: %v", sender_contact.Address, err)
+				log.Printf("Failed to send FIND_NODE to %s: %v \n", sender_contact.Address, err)
 			}
 		} else if message.Header.Type == FIND_VALUE {
 			responseData, err := network.Node.ProcessFindValueMessage(&message.Data)
 			if err != nil {
-				log.Printf("Failed to process FIND_VALUE message %s: %v", sender_contact.Address, err)
+				log.Printf("Failed to process FIND_VALUE message %s: %v \n", sender_contact.Address, err)
 			}
 			err = network.SendMessage(&sender_contact, FIND_VALUE, RESPONSE, responseData, &message.Header.MessageID)
 			if err != nil {
-				log.Printf("Failed to send FIND_VALUE to %s: %v", sender_contact.Address, err)
+				log.Printf("Failed to send FIND_VALUE to %s: %v \n", sender_contact.Address, err)
 			}
 		} else if message.Header.Type == STORE {
 			network.Node.RecieveStoreRPC(&message.Data)
@@ -268,29 +290,43 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 }
 
 func (network *Network) OpenPortAndListen(port int) {
-	network.Port = port
-	addr := net.UDPAddr{
-		Port: port,
-		IP:   net.ParseIP("0.0.0.0"),
-	}
+    network.Port = port
+    addr := net.UDPAddr{
+        Port: port,
+        IP:   net.ParseIP("0.0.0.0"),
+    }
 
-	connection, err := net.ListenUDP("udp", &addr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer connection.Close()
+    connection, err := net.ListenUDP("udp", &addr)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	buffer := make([]byte, 1024)
-	for {
-		n, remoteAddr, err := connection.ReadFromUDP(buffer)
-		if err != nil {
-			log.Println("Error reading UDP packet:", err)
-			continue
-		}
-		bufferCopy := make([]byte, n)
-		copy(bufferCopy, buffer[:n])
-		go network.HandleMessages(bufferCopy, n, remoteAddr)
-	}
+    connection.SetReadBuffer(65535)
+
+    buffer := make([]byte, 65535)
+    done := make(chan struct{})
+    go func() {
+        <-network.Node.ShutdownChan
+        connection.Close()
+        close(done)
+    }()
+
+    for {
+        n, remoteAddr, err := connection.ReadFromUDP(buffer)
+        if err != nil {
+            select {
+            case <-done:
+                log.Println("UDP listener shutting down gracefully")
+                return
+            default:
+                log.Println("Error reading UDP packet:", err)
+                continue
+            }
+        }
+        bufferCopy := make([]byte, n)
+        copy(bufferCopy, buffer[:n])
+        go network.HandleMessages(bufferCopy, n, remoteAddr)
+    }
 }
 
 func GetLocalIP() string {
@@ -363,6 +399,11 @@ func (network *Network) SendMessageAndWait(contact *Contact, messageType Message
 		messageID = message_id[0]
 	} else {
 		messageID = NewRandomKademliaID()
+	}
+	_, exists := network.ResponseMap[*messageID]
+	if exists{
+		log.Printf("Warning: The messageID %s already exists", messageID.String())
+		return MessageData{}, errors.New("MessageID already has a channel associated with it")
 	}
 
 	responseChan := make(chan MessageData)

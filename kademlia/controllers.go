@@ -69,24 +69,42 @@ func (network *Network) PutController(response http.ResponseWriter, request *htt
 }
 
 func (network *Network) GetController(response http.ResponseWriter, request *http.Request) {
-	BeginResponse(request, "/get")
-	hash := request.FormValue("hash")
+    BeginResponse(request, "/get")
+    hash := request.FormValue("hash")
 
-	fmt.Printf("Received hash: %s\n", hash)
+    fmt.Printf("Received hash: %s\n", hash)
 
-	if hash == "" {
-		http.Error(response, "Missing 'hash' parameter", http.StatusBadRequest)
-		return
-	}
+    if hash == "" {
+        http.Error(response, "Missing 'hash' parameter", http.StatusBadRequest)
+        return
+    }
 
-	data, nodes, err := network.Node.LookupData(hash)
-	node := nodes[0]
+    data, nodes, err := network.Node.LookupData(hash)
+    if err != nil {
+        fmt.Fprintf(response, "Error: Could not perform lookup: %v", err)
+        return
+    }
 
-	if err != nil {
-		fmt.Fprintf(response, "Error: Could not find data: %v", err)
-		return
-	}
-	fmt.Fprintf(response, "Data found on node %s with hash %s: %s", node.ID.String(), hash, data)
+    if data != "" {
+        fmt.Fprintf(response, "Data found for hash %s: %s", hash, data)
+        return
+    }
+
+    if len(nodes) == 0 {
+        fmt.Fprintf(response, "Data not found for hash %s, and no closer nodes are available.", hash)
+        return
+    }
+
+    fmt.Fprintf(response, "Data not found for hash %s. Closest nodes are:\n", hash)
+    for _, node := range nodes {
+        fmt.Fprintf(response, "- Node ID: %s, Address: %s\n", node.ID.String(), node.Address)
+    }
+}
+
+func (network *Network) ExitController(response http.ResponseWriter, request *http.Request) {
+    BeginResponse(request, "/exit")
+	network.Node.Quit()
+	fmt.Fprintf(response, "Shutting down node...")
 }
 
 func (network *Network) ShowRoutingTableController(response http.ResponseWriter, request *http.Request) {

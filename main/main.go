@@ -44,7 +44,7 @@ func main() {
 
 		go net.OpenPortAndListen(comm_port)
 		if os.Getenv("NODE_TYPE") != "bootstrap" {
-			go kademlia_node_state.LookupContact(&kademlia_node_state.Routes.Me)
+			go kademlia_node_state.InitNetwork(&kademlia_node_state.Routes.Me)
 			// kademlia_node_state.RefreshBuckets(kademlia_node_state.Routes.Me.ID) // have to do this after net is set up
 		}
 		net.ServerInit()

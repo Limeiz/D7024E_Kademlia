@@ -16,7 +16,7 @@ services:
       - COMMUNICATION_PORT=8080
       - SERVER_PORT=3000
       - CONTAINER_NAME=${HOSTNAME}
-      - NETWORK_TIMEOUT=5 # In seconds
+      - NETWORK_TIMEOUT=30 # In seconds
     networks:
       kademlia_network:
         ipv4_address: 192.168.0.107
@@ -40,7 +40,7 @@ services:
       - SERVER_PORT=3000
       - CONTAINER_NAME=${HOSTNAME}
       - BOOTSTRAP_ID=FABFABFABFABFABFABFABFABFABFABFABFABFAB0
-      - NETWORK_TIMEOUT=5 # In seconds
+      - NETWORK_TIMEOUT=30 # In seconds
     networks:
       kademlia_network:
     depends_on:

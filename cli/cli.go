@@ -75,7 +75,8 @@ func Init(server_port int) {
 
 	case "exit":
 		fmt.Println("Exiting node...")
-		os.Exit(0)
+		url_path := fmt.Sprintf("/exit")
+		SendHTTPRequest(server_port, url_path)
 
 	case "help":
 		fmt.Println("RPC commands:")
