@@ -144,13 +144,15 @@ func (kademlia *Kademlia) SendStoreRPC(contact *Contact, key *KademliaID, data s
 
 }
 
-func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte) {
+func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte) error {
 	deserialized_data, err := DeserializeData[StoreData](*data)
 	if err != nil {
 		log.Printf("Error: Could not deserialize store data")
+		return err
 	}
 	kademlia.Storage[deserialized_data.Key] = deserialized_data.Value
 	log.Printf("Data stored in node %s\n", kademlia.Routes.Me.ID.String())
+	return nil
 }
 
 func (kademlia *Kademlia) LookupContact(target *Contact) ([]Contact, error) {
