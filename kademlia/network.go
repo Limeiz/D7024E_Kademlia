@@ -275,6 +275,7 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 			}
 		} else if message.Header.Type == FIND_VALUE {
 			responseData, err := network.Node.ProcessFindValueMessage(&message.Data)
+
 			if err != nil {
 				log.Printf("Failed to process FIND_VALUE message %s: %v \n", sender_contact.Address, err)
 			}
@@ -291,6 +292,10 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 			if err != nil {
 				log.Printf("Failed to send STORE successful to %s: %v \n", sender_contact.Address, err)
 			}
+
+		} else if message.Header.Type == STORE {
+			network.Node.RecieveStoreRPC(&message.Data)
+
 		}
 	}
 }
