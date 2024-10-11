@@ -406,11 +406,13 @@ func (network *Network) SendMessageAndWait(contact *Contact, messageType Message
 	} else {
 		messageID = NewRandomKademliaID()
 	}
+	network.ResponseMapMutex.Lock()
 	_, exists := network.ResponseMap[*messageID]
 	if exists {
 		log.Printf("Warning: The messageID %s already exists", messageID.String())
 		return MessageData{}, errors.New("MessageID already has a channel associated with it")
 	}
+	network.ResponseMapMutex.Unlock()
 
 	responseChan := make(chan MessageData)
 	network.ResponseMapMutex.Lock()

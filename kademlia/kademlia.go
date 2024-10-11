@@ -17,10 +17,11 @@ import (
 const alpha = 3
 
 type Kademlia struct {
-	Routes       *RoutingTable
-	Network      *Network
-	Storage      map[KademliaID]string
-	ShutdownChan chan struct{}
+	Routes          *RoutingTable
+	Network         *Network
+	Storage         map[KademliaID]string
+	StorageMapMutex sync.Mutex
+	ShutdownChan    chan struct{}
 }
 
 type FindValueResponse struct {
@@ -70,7 +71,6 @@ func InitNode(bootstrap_id *KademliaID) *Kademlia {
 		new_me_contact := NewContact(new_id, GetLocalIP())
 		kademlia_node.Routes = NewRoutingTable(new_me_contact)
 		kademlia_node.Routes.AddContact(bootstrap_contact)
-		// kademlia_node.RefreshBuckets(new_id) // look up ourself to fill Routes (step 3 and 4 in join)
 	}
 
 	return &kademlia_node
@@ -145,7 +145,9 @@ func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte) error {
 		log.Printf("Error: Could not deserialize store data")
 		return err
 	}
+	kademlia.StorageMapMutex.Lock()
 	kademlia.Storage[deserialized_data.Key] = deserialized_data.Value
+	kademlia.StorageMapMutex.Unlock()
 	log.Printf("Data stored in node %s\n", kademlia.Routes.Me.ID.String())
 	return nil
 }
@@ -272,42 +274,14 @@ func (kademlia *Kademlia) ProcessFindContactMessage(data *[]byte, sender Contact
 	return responseBytes, err
 }
 
-func (kademlia *Kademlia) RefreshBuckets(targetID *KademliaID) {
-	// kademlia.LookupContact(&kademlia.Routes.Me)
-
-	closestContacts := kademlia.Routes.FindClosestContacts(targetID, IDLength)
-	if len(closestContacts) == 0 {
-		log.Println("No contacts found for the target node")
-		return
-	}
-
-	closestNeighbor := closestContacts[0]
-	closestNeighborBucketIndex := kademlia.Routes.getBucketIndex(closestNeighbor.ID)
-
-	// log.Println("should be bootstrap", closestContacts[0].ID)
-
-	// Iterate over buckets further away than the closest neighbor
-	for i := closestNeighborBucketIndex + 1; i < len(kademlia.Routes.buckets); i++ {
-		bucket := kademlia.Routes.buckets[i]
-
-		for contactElement := bucket.list.Front(); contactElement != nil; contactElement = contactElement.Next() {
-			contact := contactElement.Value.(Contact)
-
-			targetContact := Contact{
-				ID:      targetID,
-				Address: contact.Address,
-			}
-
-			// Send a ping to the nodes in this bucket, try find_node and iterative if doesn't work, have never come this far
-			log.Printf("Refreshing bucket %d by pinging contact %s\n", i, contact.Address)
-			kademlia.Network.Node.Ping(&targetContact)
-		}
-	}
-}
-
 func (kademlia *Kademlia) LookupData(hash string) (string, []Contact, error) {
-
-	data, exists := kademlia.Storage[*NewKademliaID(hash)]
+	kademliaID := NewKademliaID(hash)
+	if kademliaID == nil {
+		return "", nil, fmt.Errorf("Invalid KademliaID for hash: %s", hash)
+	}
+	kademlia.StorageMapMutex.Lock()
+	data, exists := kademlia.Storage[*kademliaID]
+	kademlia.StorageMapMutex.Unlock()
 
 	if exists {
 		return data, []Contact{kademlia.Routes.Me}, nil
@@ -375,7 +349,10 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact, error) {
 			}
 
 			if res.response.Value != "" {
-				return res.response.Value, []Contact{res.response.ClosestContacts[0]}, nil
+				if len(res.response.ClosestContacts) > 0 { //tHESE THREE
+					return res.response.Value, []Contact{res.response.ClosestContacts[0]}, nil
+				}
+				return res.response.Value, nil, nil
 			}
 			mu.Lock()
 			for _, node := range res.response.ClosestContacts {
@@ -386,8 +363,7 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact, error) {
 					frontier = append(frontier, node)
 				}
 			}
-			mu.Unlock()
-			mu.Lock()
+
 			for pending < alpha && len(frontier) > 0 {
 				contact := frontier[0]
 				frontier = frontier[1:]
@@ -404,6 +380,10 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact, error) {
 
 	// Finalize the result
 	sort.Slice(ret, func(i, j int) bool {
+		if i >= len(ret) || j >= len(ret) {
+			log.Printf("Index out of range: i=%d, j=%d, len(ret)=%d", i, j, len(ret))
+			return false
+		}
 		return ret[i].Less(&ret[j])
 	})
 
@@ -427,11 +407,14 @@ func (kademlia *Kademlia) SendFindValueRPC(contact *Contact, valueID *KademliaID
 		return FindValueResponse{}, err
 	}
 
-	response := FindValueResponse{}
+	response := FindValueResponse{
+		ClosestContacts: make([]Contact, 0),
+	}
 
 	// Try parse response for value then contacts
 	response.Value = string(data.Data)
 	if len(response.Value) > 0 {
+		response.ClosestContacts = append(response.ClosestContacts, *contact) // also send the node it was found on THIS LINE
 		return response, nil
 	}
 	contacts, err := DeserializeContacts(data.Data)
@@ -472,7 +455,9 @@ func (kademlia *Kademlia) ProcessFindValueMessage(data *[]byte) ([]byte, error) 
 	}
 
 	// Check if the value is stored locally.
+	kademlia.StorageMapMutex.Lock()
 	value, exists := kademlia.Storage[*valueID]
+	kademlia.StorageMapMutex.Unlock()
 	if exists {
 		serializedValue := []byte(value)
 		return serializedValue, nil
@@ -493,8 +478,9 @@ func (kademlia *Kademlia) Store(data []byte) (string, error) {
 	hexEncodedKey := HashData(string(data))
 	kademliaID := NewKademliaID(hexEncodedKey)
 	//fmt.Printf("Data hash (key): %s\n", hexEncodedKey)
-
+	kademlia.StorageMapMutex.Lock()
 	kademlia.Storage[*kademliaID] = string(data)
+	kademlia.StorageMapMutex.Unlock()
 	fmt.Printf("Stored locally on node: %s\n", kademlia.Routes.Me.Address)
 
 	targetContact := NewContact(kademliaID, "")

@@ -86,7 +86,11 @@ func (network *Network) GetController(response http.ResponseWriter, request *htt
 	}
 
 	if data != "" {
-		fmt.Fprintf(response, "Data found for hash %s: %s on node %v", hash, data, nodes[0].ID.String())
+		if len(nodes) > 0 {
+			fmt.Fprintf(response, "Data found for hash %s: %s on node %v", hash, data, nodes[0].ID.String())
+		} else {
+			fmt.Fprintf(response, "Data found for hash %s: %s, on unknown node", hash, data) // should not happen
+		}
 		return
 	}
 
