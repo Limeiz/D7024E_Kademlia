@@ -28,11 +28,6 @@ type FindValueResponse struct {
 	ClosestContacts []Contact // The list of closer contacts, if no value is found
 }
 
-type ContactResponse struct { // not needed anymore, redo
-	contacts []Contact
-	err      error
-}
-
 type StoreData struct {
 	Key   KademliaID
 	Value string
