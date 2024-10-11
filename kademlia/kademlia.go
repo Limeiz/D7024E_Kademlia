@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -91,7 +92,7 @@ func (kademlia *Kademlia) InitNetwork(target *Contact) {
 		log.Printf("LookupContact produced %d contacts \n", len(contacts))
 		if error != nil || len(contacts) < 2 {
 			log.Printf("Error: LookupContact attempt %d failed \n", attempt+1)
-			delay := 3.00 + rand.Float64()*(5.00-3.01)
+			delay := 5.00 + rand.Float64()*(10.00-5.01) // wait for 5-10 seconds
 			time.Sleep(time.Duration(delay*1000) * time.Millisecond)
 			attempt++
 			continue
@@ -221,7 +222,9 @@ func (kademlia *Kademlia) SendFindNode(contact Contact, target *Contact, done ch
 	response, err := kademlia.SendFindNodeRPC(&contact, target)
 	if err != nil {
 		log.Printf("Error contacting %v: %v ", contact.Address, err)
-		kademlia.Ping(&contact) // Ping will remove the contact if it doesnt work
+		if !strings.EqualFold(contact.ID.String(), os.Getenv("BOOTSTRAP_ID")) { // dont send ping to bootstrap
+			kademlia.Ping(&contact) // Ping will remove the contact if it doesnt work
+		}
 		done <- nil
 		return
 	}
