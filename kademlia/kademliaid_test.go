@@ -28,11 +28,16 @@ func TestNewRandomKademliaID(t *testing.T) {
 func TestLess(t *testing.T) {
 	id1 := NewKademliaID("0000000000000000000000000000000000000001")
 	id2 := NewKademliaID("0000000000000000000000000000000000000002")
+	id3 := NewKademliaID("0000000000000000000000000000000000000001")
+
 	if !id1.Less(id2) {
 		t.Error("Expected id1 to be less than id2")
 	}
 	if id2.Less(id1) {
 		t.Error("Expected id2 not to be less than id1")
+	}
+	if id1.Less(id3) {
+		t.Error("Expected id1 not to be less than id3, as they are identical")
 	}
 }
 

@@ -16,12 +16,32 @@ func TestNewBucket(t *testing.T) {
 
 func TestBucketAddContact(t *testing.T) {
 	bucket := newBucket()
-	id := NewRandomKademliaID()
-	contact := NewContact(id, "192.168.0.1")
+	contact := NewContact(NewRandomKademliaID(), "192.168.0.1")
 
 	bucket.AddContact(contact)
 	if bucket.Len() != 1 {
 		t.Errorf("Expected bucket length to be 1, got %d", bucket.Len())
+	}
+
+	contact2 := NewContact(NewRandomKademliaID(), "192.168.0.2")
+	bucket.AddContact(contact2)
+	if bucket.Len() != 2 {
+		t.Errorf("Expected bucket length to be 2, got %d", bucket.Len())
+	}
+
+	bucket.AddContact(contact)
+
+	frontContact := bucket.list.Front().Value.(Contact)
+	if !frontContact.ID.Equals(contact.ID) {
+		t.Errorf("Expected the contact to be moved to the front of the bucket")
+	}
+
+	bucket = fillBucket(bucket)
+	overflowContact := NewContact(NewRandomKademliaID(), "192.168.0.100")
+	bucket.AddContact(overflowContact)
+
+	if bucket.Len() != bucketSize {
+		t.Errorf("Bucket length exceeded the limit. Expected length: %d, got %d", bucketSize, bucket.Len())
 	}
 }
 
