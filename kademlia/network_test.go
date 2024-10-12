@@ -6,6 +6,58 @@ import (
 	"testing"
 )
 
+func TestMessageTypeToString(t *testing.T) {
+	result := MessageTypeToString(PING)
+	expected := "PING"
+	if result != expected {
+		t.Errorf("Expected %s for PING, got %s", expected, result)
+	}
+
+	result = MessageTypeToString(FIND_NODE)
+	expected = "FIND_NODE"
+	if result != expected {
+		t.Errorf("Expected %s for FIND_NODE, got %s", expected, result)
+	}
+
+	result = MessageTypeToString(FIND_VALUE)
+	expected = "FIND_VALUE"
+	if result != expected {
+		t.Errorf("Expected %s for FIND_VALUE, got %s", expected, result)
+	}
+
+	result = MessageTypeToString(STORE)
+	expected = "STORE"
+	if result != expected {
+		t.Errorf("Expected %s for STORE, got %s", expected, result)
+	}
+
+	result = MessageTypeToString(MessageType(99))
+	expected = "NIL"
+	if result != expected {
+		t.Errorf("Expected %s for unknown MessageType, got %s", expected, result)
+	}
+}
+
+func TestMessageDirectionToString(t *testing.T) {
+	result := MessageDirectionToString(REQUEST)
+	expected := "REQUEST"
+	if result != expected {
+		t.Errorf("Expected %s for REQUEST, got %s", expected, result)
+	}
+
+	result = MessageDirectionToString(RESPONSE)
+	expected = "RESPONSE"
+	if result != expected {
+		t.Errorf("Expected %s for RESPONSE, got %s", expected, result)
+	}
+
+	result = MessageDirectionToString(MessageDirection(99))
+	expected = "NIL"
+	if result != expected {
+		t.Errorf("Expected %s for unknown MessageDirection, got %s", expected, result)
+	}
+}
+
 func TestInitNetwork(t *testing.T) {
 	bootstrapID := NewKademliaID("2111111400000000000000000000000000000000")
 	node := InitNode(bootstrapID)
@@ -14,6 +66,20 @@ func TestInitNetwork(t *testing.T) {
 
 	if network == nil {
 		t.Errorf("Expected network to be initialized, but got nil.")
+	}
+}
+
+func TestDecodeMessageHeaderWithEmptyData(t *testing.T) {
+	_, err := DecodeMessageHeader([]byte{})
+	if err == nil {
+		t.Error("Expected error for empty data, but got none")
+	}
+}
+
+func TestDeserializeMessageWithEmptyData(t *testing.T) {
+	_, err := DeserializeMessage([]byte{})
+	if err == nil {
+		t.Error("Expected error for empty data, but got none")
 	}
 }
 
