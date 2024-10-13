@@ -2,8 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 )
 
@@ -17,7 +18,7 @@ func SendHTTPRequest(server_port int, http_path string) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("Failed to read response: %v\n", err)
 		return
@@ -41,28 +42,56 @@ func Init(server_port int) {
 		url_path := fmt.Sprintf("/ping?to=%s", ip)
 
 		SendHTTPRequest(server_port, url_path)
-		break
+
+	case "put":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: put <data>")
+			return
+		}
+		data := url.QueryEscape(os.Args[2]) // in case of special characters
+		url_path := fmt.Sprintf("/put?data=%s", data)
+		SendHTTPRequest(server_port, url_path)
+
+	case "get":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: get <hash>")
+			return
+		}
+		hash := url.QueryEscape(os.Args[2])
+		url_path := fmt.Sprintf("/get?hash=%s", hash)
+		SendHTTPRequest(server_port, url_path)
 
 	case "show-id":
 		url_path := fmt.Sprintf("/getid")
 		SendHTTPRequest(server_port, url_path)
-		break
 
 	case "show-routing-table":
 		url_path := fmt.Sprintf("/show-routing-table")
 		SendHTTPRequest(server_port, url_path)
-		break
+
+	case "show-storage":
+		url_path := fmt.Sprintf("/show-storage")
+		SendHTTPRequest(server_port, url_path)
+
+	case "exit":
+		fmt.Println("Exiting node...")
+		url_path := fmt.Sprintf("/exit")
+		SendHTTPRequest(server_port, url_path)
 
 	case "help":
 		fmt.Println("RPC commands:")
 		fmt.Println("ping <to>")
+		fmt.Println("put <data>")
+		fmt.Println("get <hash>")
 
 		fmt.Println("Show commands:")
 		fmt.Println("Usage: show-[node_variable]")
 		fmt.Println("Availible commands:")
 		fmt.Println("show-id")
 		fmt.Println("show-routing-table")
-		break
+		fmt.Println("show-storage")
+
+		fmt.Println("exit")
 
 	default:
 		fmt.Println("Unknown command:", os.Args[1])

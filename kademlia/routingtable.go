@@ -1,6 +1,6 @@
 package kademlia
 
-import(
+import (
 	"fmt"
 )
 
@@ -23,11 +23,14 @@ func NewRoutingTable(me Contact) *RoutingTable {
 	return routingTable
 }
 
-// AddContact add a new contact to the correct Bucket
+// AddContact add a new contact to the correct Bucket, ONLY if not Me or already in it
 func (routingTable *RoutingTable) AddContact(contact Contact) {
 	bucketIndex := routingTable.getBucketIndex(contact.ID)
 	bucket := routingTable.buckets[bucketIndex]
-	bucket.AddContact(contact)
+	if contact != routingTable.Me || routingTable.IsContactInTable(&contact) {
+		bucket.AddContact(contact)
+	}
+
 }
 
 // RemoveContact remove a contact from the correct Bucket by ID
@@ -79,7 +82,7 @@ func (routingTable *RoutingTable) getBucketIndex(id *KademliaID) int {
 	return IDLength*8 - 1
 }
 
-func (routingTable *RoutingTable) String() string{
+func (routingTable *RoutingTable) String() string {
 	var result string
 	for i, bucket := range routingTable.buckets {
 		result += fmt.Sprintf("B%d: {", i)
@@ -93,4 +96,20 @@ func (routingTable *RoutingTable) String() string{
 		result += "}\n"
 	}
 	return result
+}
+
+// Check if a given contact is already in the routing table
+func (routingTable *RoutingTable) IsContactInTable(contact *Contact) bool {
+	for _, bucket := range routingTable.buckets {
+		if bucket == nil {
+			continue
+		}
+
+		for e := bucket.list.Front(); e != nil; e = e.Next() {
+			if e.Value.(Contact).ID.Equals(contact.ID) {
+				return true
+			}
+		}
+	}
+	return false
 }

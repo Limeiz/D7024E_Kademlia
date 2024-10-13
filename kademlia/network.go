@@ -2,9 +2,10 @@ package kademlia
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
-	"encoding/gob"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -18,6 +19,7 @@ type Network struct {
 	ResponseMap      map[KademliaID]chan MessageData
 	ResponseMapMutex sync.Mutex
 	Port             int
+	Timeout          int
 }
 
 type MessageType uint8
@@ -44,8 +46,8 @@ type MessageHeader struct {
 	SenderID     KademliaID
 	ReceiverID   KademliaID
 	BodyLength   uint32
-	SenderIP     string
-	ReceiverIP   string
+	SenderIP     [15]byte
+	ReceiverIP   [15]byte
 }
 
 type MessageData struct {
@@ -79,41 +81,130 @@ func MessageDirectionToString(message_direction MessageDirection) string {
 	}
 }
 
-func SerializeMessage(messageData MessageData) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(messageData)
-	if err != nil {
+func EncodeMessageHeader(header MessageHeader) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.BigEndian, header.HeaderLength); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.HeaderTag); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.Direction); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.Type); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.MessageID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.SenderID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.ReceiverID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.BodyLength); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.SenderIP); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.BigEndian, header.ReceiverIP); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-func DeserializeMessage(data []byte) (MessageData, error) {
-	var messageData MessageData
-	buf := bytes.NewBuffer(data)
-	dec := gob.NewDecoder(buf)
-	err := dec.Decode(&messageData)
-	if err != nil {
-		return messageData, err
+func DecodeMessageHeader(data []byte) (MessageHeader, error) {
+	buf := bytes.NewReader(data)
+	var header MessageHeader
+	if err := binary.Read(buf, binary.BigEndian, &header.HeaderLength); err != nil {
+		return header, err
 	}
-	return messageData, nil
+	if err := binary.Read(buf, binary.BigEndian, &header.HeaderTag); err != nil {
+		return header, err
+	}
+	if err := binary.Read(buf, binary.BigEndian, &header.Direction); err != nil {
+		return header, err
+	}
+	if err := binary.Read(buf, binary.BigEndian, &header.Type); err != nil {
+		return header, err
+	}
+	if err := binary.Read(buf, binary.BigEndian, &header.MessageID); err != nil {
+		return header, err
+	}
+	if err := binary.Read(buf, binary.BigEndian, &header.SenderID); err != nil {
+		return header, err
+	}
+	if err := binary.Read(buf, binary.BigEndian, &header.ReceiverID); err != nil {
+		return header, err
+	}
+	if err := binary.Read(buf, binary.BigEndian, &header.BodyLength); err != nil {
+		return header, err
+	}
+	if err := binary.Read(buf, binary.BigEndian, &header.SenderIP); err != nil {
+		return header, err
+	}
+	if err := binary.Read(buf, binary.BigEndian, &header.ReceiverIP); err != nil {
+		return header, err
+	}
+
+	return header, nil
 }
 
-func InitNetwork(node *Kademlia) *Network {
+func SerializeMessage(messageData MessageData) ([]byte, error) {
+	headerBytes, err := EncodeMessageHeader(messageData.Header)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := new(bytes.Buffer)
+	buf.Write(headerBytes)
+	buf.Write(messageData.Data) // Data is already in bytes
+
+	return buf.Bytes(), nil
+}
+
+func DeserializeMessage(data []byte) (MessageData, error) {
+	var msg MessageData
+	buf := bytes.NewReader(data)
+	headerBytes := make([]byte, binary.Size(MessageHeader{}))
+	if _, err := io.ReadFull(buf, headerBytes); err != nil {
+		return msg, err
+	}
+	header, err := DecodeMessageHeader(headerBytes)
+	if err != nil {
+		return msg, err
+	}
+	msg.Header = header
+	msg.Data = make([]byte, msg.Header.BodyLength)
+	if _, err := io.ReadFull(buf, msg.Data); err != nil {
+		return msg, err
+	}
+
+	return msg, nil
+}
+
+func InitNetwork(node *Kademlia, timeout int) *Network {
 	network := &Network{
 		Node:        node,
 		ResponseMap: make(map[KademliaID]chan MessageData),
 		Port:        8080,
+		Timeout:     timeout,
 	}
 	return network
 }
 
 func (network *Network) ServerInit() {
-	http.HandleFunc("/", network.DefaultController)  // Corrected net.http to net/http
-	http.HandleFunc("/ping", network.PingController) // Corrected net.http to net/http
+	http.HandleFunc("/", network.DefaultController)
+	http.HandleFunc("/ping", network.PingController)
+	http.HandleFunc("/put", network.PutController)
+	http.HandleFunc("/get", network.GetController)
 	http.HandleFunc("/getid", network.GetID)
 	http.HandleFunc("/show-routing-table", network.ShowRoutingTableController)
+	http.HandleFunc("/show-storage", network.ShowStorageController)
+	http.HandleFunc("/exit", network.ExitController)
 }
 
 func (network *Network) ServerStart(port int) {
@@ -122,12 +213,32 @@ func (network *Network) ServerStart(port int) {
 		Port: port,
 		IP:   net.ParseIP("0.0.0.0"),
 	}
-	err := http.ListenAndServe(addr.String(), nil)
 
-	if errors.Is(err, http.ErrServerClosed) {
-		log.Printf("Server closing \n")
-	} else if err != nil {
-		log.Printf("Server error: %s\n", err)
+	server := &http.Server{
+		Addr: addr.String(),
+	}
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
+
+	select {
+	case <-network.Node.ShutdownChan:
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("Server Shutdown Failed: %+v", err)
+		} else {
+			log.Printf("Server Shutdown gracefully")
+		}
+	case err := <-errChan:
+		if err != nil {
+			log.Printf("Server error: %s\n", err)
+		}
 	}
 }
 
@@ -140,38 +251,46 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 	log.Printf("Received a <%s,%s> message[%s] from %s\n", MessageDirectionToString(message.Header.Direction), MessageTypeToString(message.Header.Type), message.Header.MessageID.String(), addr)
 
 	if message.Header.Direction == RESPONSE {
+		network.ResponseMapMutex.Lock()
 		responseChan, exists := network.ResponseMap[message.Header.MessageID]
+		network.ResponseMapMutex.Unlock()
 		if exists {
 			responseChan <- message
 		} else {
 			log.Printf("No waiting request for message[%s] from %s\n", message.Header.MessageID.String(), addr)
 		}
 	} else {
-		sender_contact := NewContact(&message.Header.SenderID, message.Header.SenderIP)
+		sender_contact := NewContact(&message.Header.SenderID, Byte15ArrayToString(message.Header.SenderIP))
 		// Handle request messages (e.g., PING) here
 		if message.Header.Type == PING {
 			network.Node.Pong(&sender_contact, &message.Header.MessageID)
 		} else if message.Header.Type == FIND_NODE {
 			responseData, err := network.Node.ProcessFindContactMessage(&message.Data, sender_contact)
 			if err != nil {
-				log.Printf("Failed to process FIND_NODE message %s: %v", sender_contact.Address, err)
+				log.Printf("Failed to process FIND_NODE message %s: %v \n", sender_contact.Address, err)
 			}
 			err = network.SendMessage(&sender_contact, FIND_NODE, RESPONSE, responseData, &message.Header.MessageID)
 			if err != nil {
-				log.Printf("Failed to send FIND_NODE to %s: %v", sender_contact.Address, err)
+				log.Printf("Failed to send FIND_NODE to %s: %v \n", sender_contact.Address, err)
 			}
 		} else if message.Header.Type == FIND_VALUE {
-			responseData, err := network.Node.ProcessFindValueMessage(&message.Data) //msgType to signal if it is value or contacts
+			responseData, err := network.Node.ProcessFindValueMessage(&message.Data)
 			if err != nil {
-				log.Printf("Failed to process FIND_VALUE message %s: %v", sender_contact.Address, err)
+				log.Printf("Failed to process FIND_VALUE message %s: %v \n", sender_contact.Address, err)
 			}
 			err = network.SendMessage(&sender_contact, FIND_VALUE, RESPONSE, responseData, &message.Header.MessageID)
 			if err != nil {
-				log.Printf("Failed to send FIND_VALUE to %s: %v", sender_contact.Address, err)
+				log.Printf("Failed to send FIND_VALUE to %s: %v \n", sender_contact.Address, err)
 			}
 		} else if message.Header.Type == STORE {
-			network.Node.RecieveStoreRPC(&message.Data)
-
+			err = network.Node.RecieveStoreRPC(&message.Data)
+			if err != nil {
+				log.Printf("Failed to process STORE message %s: %v \n", sender_contact.Address, err)
+			}
+			err = network.SendMessage(&sender_contact, STORE, RESPONSE, []byte{}, &message.Header.MessageID)
+			if err != nil {
+				log.Printf("Failed to send STORE successful to %s: %v \n", sender_contact.Address, err)
+			}
 		}
 	}
 }
@@ -187,14 +306,28 @@ func (network *Network) OpenPortAndListen(port int) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer connection.Close()
 
-	buffer := make([]byte, 1024)
+	connection.SetReadBuffer(65535)
+
+	buffer := make([]byte, 65535)
+	done := make(chan struct{})
+	go func() {
+		<-network.Node.ShutdownChan
+		connection.Close()
+		close(done)
+	}()
+
 	for {
 		n, remoteAddr, err := connection.ReadFromUDP(buffer)
 		if err != nil {
-			log.Println("Error reading UDP packet:", err)
-			continue
+			select {
+			case <-done:
+				log.Println("UDP listener shutting down gracefully")
+				return
+			default:
+				log.Println("Error reading UDP packet:", err)
+				continue
+			}
 		}
 		bufferCopy := make([]byte, n)
 		copy(bufferCopy, buffer[:n])
@@ -214,6 +347,16 @@ func GetLocalIP() string {
 	return localAddr.IP.String()
 }
 
+func StringTo15ByteArray(str string) [15]byte {
+	var arr [15]byte
+	copy(arr[:], str)
+	return arr
+}
+
+func Byte15ArrayToString(buffer [15]byte) string {
+	return string(bytes.Trim(buffer[:], "\x00"))
+}
+
 func (network *Network) SendMessage(contact *Contact, messageType MessageType, messageDir MessageDirection, data []byte, message_id ...*KademliaID) error {
 	var messageID *KademliaID
 	if len(message_id) > 0 {
@@ -231,8 +374,8 @@ func (network *Network) SendMessage(contact *Contact, messageType MessageType, m
 		SenderID:     *network.Node.Routes.Me.ID,
 		ReceiverID:   *contact.ID,
 		BodyLength:   uint32(len(data)),
-		SenderIP:     GetLocalIP(),
-		ReceiverIP:   contact.Address,
+		SenderIP:     StringTo15ByteArray(GetLocalIP()),
+		ReceiverIP:   StringTo15ByteArray(contact.Address),
 	}
 
 	messageData := MessageData{
@@ -263,6 +406,13 @@ func (network *Network) SendMessageAndWait(contact *Contact, messageType Message
 	} else {
 		messageID = NewRandomKademliaID()
 	}
+	network.ResponseMapMutex.Lock()
+	_, exists := network.ResponseMap[*messageID]
+	if exists {
+		log.Printf("Warning: The messageID %s already exists", messageID.String())
+		return MessageData{}, errors.New("MessageID already has a channel associated with it")
+	}
+	network.ResponseMapMutex.Unlock()
 
 	responseChan := make(chan MessageData)
 	network.ResponseMapMutex.Lock()
@@ -281,7 +431,7 @@ func (network *Network) SendMessageAndWait(contact *Contact, messageType Message
 		network.ResponseMapMutex.Unlock()
 		return response, nil
 
-	case <-time.After(5 * time.Second):
+	case <-time.After(time.Duration(network.Timeout) * time.Second):
 		network.ResponseMapMutex.Lock()
 		delete(network.ResponseMap, *messageID)
 		network.ResponseMapMutex.Unlock()

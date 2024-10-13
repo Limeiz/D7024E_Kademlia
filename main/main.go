@@ -25,7 +25,14 @@ func main() {
 		bootstrap_node_id := kademlia.NewKademliaID(bootstrap_id_string)
 		kademlia_node_state = kademlia.InitNode(bootstrap_node_id)
 
-		net := kademlia.InitNetwork(kademlia_node_state)
+		server_timeout, timeout_err := strconv.Atoi(os.Getenv("NETWORK_TIMEOUT"))
+
+		if timeout_err != nil{
+			log.Fatalln("Could not parse the NETWORK_TIMEOUT env variable")
+			return
+		}
+
+		net := kademlia.InitNetwork(kademlia_node_state, server_timeout)
 		kademlia_node_state.Network = net
 		log.Println("Starting kademlia on node ", kademlia_node_state.Routes.Me.ID)
 		comm_port, comm_err := strconv.Atoi(os.Getenv("COMMUNICATION_PORT"))
@@ -37,7 +44,7 @@ func main() {
 
 		go net.OpenPortAndListen(comm_port)
 		if os.Getenv("NODE_TYPE") != "bootstrap" {
-			go kademlia_node_state.LookupContact(&kademlia_node_state.Routes.Me)
+			go kademlia_node_state.InitNetwork(&kademlia_node_state.Routes.Me)
 			// kademlia_node_state.RefreshBuckets(kademlia_node_state.Routes.Me.ID) // have to do this after net is set up
 		}
 		net.ServerInit()
