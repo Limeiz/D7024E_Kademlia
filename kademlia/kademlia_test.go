@@ -224,3 +224,161 @@ func TestMin(t *testing.T) {
 		}
 	}
 }
+
+func TestSerializeKademliaID(t *testing.T) {
+	tests := []struct {
+		id       *KademliaID
+		expected []byte
+		hasError bool
+	}{
+		{ // Test case with a valid KademliaID
+			id:       &KademliaID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+			expected: []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+			hasError: false,
+		},
+		{ // Test case with a nil KademliaID
+			id:       nil,
+			expected: nil,
+			hasError: true,
+		},
+	}
+
+	for _, test := range tests {
+		result, err := SerializeKademliaID(test.id)
+
+		if test.hasError {
+			if err == nil {
+				t.Errorf("Expected error for SerializeKademliaID with id %v, got nil", test.id)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("Unexpected error for SerializeKademliaID with id %v: %v", test.id, err)
+			}
+			if !equalbyte(result, test.expected) {
+				t.Errorf("Expected %v, got %v", test.expected, result)
+			}
+		}
+	}
+}
+
+func TestDeserializeKademliaID(t *testing.T) {
+	tests := []struct {
+		data     []byte
+		expected *KademliaID
+		hasError bool
+	}{
+		{ // Test case with valid data
+			data:     []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+			expected: &KademliaID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+			hasError: false,
+		},
+		{ // Test case with invalid length
+			data:     []byte{1, 2, 3}, // Invalid length
+			expected: nil,
+			hasError: true,
+		},
+	}
+
+	for _, test := range tests {
+		result, err := DeserializeKademliaID(test.data)
+
+		if test.hasError {
+			if err == nil {
+				t.Errorf("Expected error for DeserializeKademliaID with data %v, got nil", test.data)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("Unexpected error for DeserializeKademliaID with data %v: %v", test.data, err)
+			}
+			if !equalID(result, test.expected) {
+				t.Errorf("Expected %v, got %v", test.expected, result)
+			}
+		}
+	}
+}
+
+// Helper function to compare two KademliaID values
+func equalID(a *KademliaID, b *KademliaID) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	for i := 0; i < IDLength; i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalbyte(a []byte, b []byte) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	for i := 0; i < IDLength; i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestProcessFindValueMessage(t *testing.T) {
+	kademlia := NewMockKademlia()
+	value := "storedValue"
+	hash := HashData(string(value))
+	key := NewKademliaID(hash)
+	kademlia.Storage[*key] = string(value)
+
+	validID := NewKademliaID(hash)
+	kademlia.Storage[*validID] = "storedValue"
+
+	data := make([]byte, 20)
+	copy(data, validID[:])
+
+	// Valid
+	result, err := kademlia.ProcessFindValueMessage(&data)
+	if err != nil {
+		t.Fatalf("Unexpected error for valid data: %v", err)
+	}
+	if string(result) != "storedValue" {
+		t.Errorf("Expected value %q, got %q", "storedValue", string(result))
+	}
+
+	// Invalid KademliaID length
+	invalidData := []byte{1, 2, 3, 4, 5}
+	_, err = kademlia.ProcessFindValueMessage(&invalidData)
+	if err == nil {
+		t.Fatalf("Expected error for data %v, got none", invalidData)
+	}
+	if err.Error() != "invalid KademliaID length: expected 20, got 5\n" {
+		t.Errorf("Expected error message for invalid length, got %v", err)
+	}
+
+	// When value not found
+	missingData := make([]byte, 20)
+	missingID := NewKademliaID(HashData(string(missingData)))
+
+	copy(missingData, missingID[:])
+
+	contact1 := NewContact(NewRandomKademliaID(), "localhost:8002")
+	kademlia.Routes.AddContact(contact1)
+
+	responseData, err := kademlia.ProcessFindValueMessage(&missingData)
+	if err != nil {
+		t.Fatalf("Unexpected error for missing data: %v", err)
+	}
+
+	if responseData == nil {
+		t.Fatal("Expected response data to be non-nil")
+	}
+
+	expectedContacts := []Contact{contact1}
+	expectedResponse, err := SerializeContacts(expectedContacts)
+	if err != nil {
+		t.Fatalf("Failed to serialize expected contacts: %v", err)
+	}
+
+	if string(responseData) != string(expectedResponse) {
+		t.Errorf("Expected response data to be %q, got %q", string(expectedResponse), string(responseData))
+	}
+}
