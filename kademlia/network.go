@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -26,15 +27,17 @@ type MessageType uint8
 type MessageDirection uint8
 
 const (
-	PING       MessageType = 0
-	FIND_NODE  MessageType = 1
-	FIND_VALUE MessageType = 2
-	STORE      MessageType = 3
+	PING             MessageType = 0
+	FIND_NODE        MessageType = 1
+	FIND_VALUE       MessageType = 2
+	STORE            MessageType = 3
+	MAX_MESSAGE_TYPE MessageType = 4
 )
 
 const (
-	REQUEST  MessageDirection = 0
-	RESPONSE MessageDirection = 1
+	REQUEST               MessageDirection = 0
+	RESPONSE              MessageDirection = 1
+	MAX_MESSAGE_DIRECTION MessageDirection = 2
 )
 
 type MessageHeader struct {
@@ -82,6 +85,13 @@ func MessageDirectionToString(message_direction MessageDirection) string {
 }
 
 func EncodeMessageHeader(header MessageHeader) ([]byte, error) {
+	if header.Type >= MAX_MESSAGE_TYPE {
+		return nil, fmt.Errorf("invalid MessageType: %d", header.Type)
+	}
+
+	if header.Direction >= MAX_MESSAGE_DIRECTION {
+		return nil, fmt.Errorf("invalid MessageDirection: %d", header.Direction)
+	}
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.BigEndian, header.HeaderLength); err != nil {
 		return nil, err
