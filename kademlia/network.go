@@ -293,8 +293,14 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 				log.Printf("Failed to send FIND_VALUE to %s: %v \n", sender_contact.Address, err)
 			}
 		} else if message.Header.Type == STORE {
-			network.Node.RecieveStoreRPC(&message.Data)
-
+			err = network.Node.RecieveStoreRPC(&message.Data)
+			if err != nil {
+				log.Printf("Failed to process STORE message %s: %v \n", sender_contact.Address, err)
+			}
+			err = network.SendMessage(&sender_contact, STORE, RESPONSE, []byte{}, &message.Header.MessageID)
+			if err != nil {
+				log.Printf("Failed to send STORE successful to %s: %v \n", sender_contact.Address, err)
+			}
 		}
 	}
 }
@@ -410,11 +416,13 @@ func (network *Network) SendMessageAndWait(contact *Contact, messageType Message
 	} else {
 		messageID = NewRandomKademliaID()
 	}
+	network.ResponseMapMutex.Lock()
 	_, exists := network.ResponseMap[*messageID]
 	if exists {
 		log.Printf("Warning: The messageID %s already exists", messageID.String())
 		return MessageData{}, errors.New("MessageID already has a channel associated with it")
 	}
+	network.ResponseMapMutex.Unlock()
 
 	responseChan := make(chan MessageData)
 	network.ResponseMapMutex.Lock()
