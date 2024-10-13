@@ -397,6 +397,13 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact, error) {
 	return "", ret, nil
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (kademlia *Kademlia) SendFindValueRPC(contact *Contact, valueID *KademliaID) (FindValueResponse, error) {
 	serializedValueID, err := SerializeKademliaID(valueID)
 	if err != nil {
@@ -480,11 +487,6 @@ func (kademlia *Kademlia) ProcessFindValueMessage(data *[]byte) ([]byte, error) 
 func (kademlia *Kademlia) Store(data []byte) (string, error) {
 	hexEncodedKey := HashData(string(data))
 	kademliaID := NewKademliaID(hexEncodedKey)
-	//fmt.Printf("Data hash (key): %s\n", hexEncodedKey)
-	kademlia.StorageMapMutex.Lock()
-	kademlia.Storage[*kademliaID] = string(data)
-	kademlia.StorageMapMutex.Unlock()
-	fmt.Printf("Stored locally on node: %s\n", kademlia.Routes.Me.Address)
 
 	targetContact := NewContact(kademliaID, "")
 
