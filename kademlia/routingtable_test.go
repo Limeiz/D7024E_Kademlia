@@ -122,3 +122,58 @@ func TestIsContactInTable(t *testing.T) {
 		t.Error("Expected contact to be in the table, but it was not.")
 	}
 }
+
+// func TestRoutingTableString(t *testing.T) {
+// 	// Create a new routing table with a contact
+// 	me := NewContact(NewKademliaID("ffffffffffffffffffffffffffffffffffffffff"), "localhost:8000")
+// 	rt := NewRoutingTable(me)
+
+// 	// Check the string representation for an empty routing table
+// 	expectedEmpty := ""
+// 	for i := 0; i < IDLength*8; i++ {
+// 		expectedEmpty += fmt.Sprintf("B%d: {}\n", i)
+// 	}
+
+// 	if result := rt.String(); result != expectedEmpty {
+// 		t.Errorf("Expected empty string representation:\n%q\nbut got:\n%q", expectedEmpty, result)
+// 	}
+
+// 	// Add a contact to the routing table
+// 	contact1 := NewContact(NewKademliaID("fffffffffffffffffffffffffffffffffffffffe"), "localhost:8001")
+// 	rt.AddContact(contact1)
+
+// 	// Check the string representation after adding contact
+// 	expectedNonEmpty := fmt.Sprintf(
+// 		"B0: {(fffffffffffffffffffffffffffffffffffffffe, localhost:8001)}\n" +
+// 			"B1: {}\n" +
+// 			"B2: {}\nB3: {}\nB4: {}\nB5: {}\nB6: {}\nB7: {}\nB8: {}\nB9: {}\n" +
+// 			"B10: {}\nB11: {}\nB12: {}\nB13: {}\nB14: {}\nB15: {}\nB16: {}\n" +
+// 			"B17: {}\nB18: {}\nB19: {}\nB20: {}\nB21: {}\nB22: {}\nB23: {}\n" +
+// 			"B24: {}\nB25: {}\nB26: {}\nB27: {}\nB28: {}\nB29: {}\nB30: {}\n" +
+// 			"B31: {}\nB32: {}\nB33: {}\nB34: {}\nB35: {}\nB36: {}\nB37: {}\n" +
+// 			"B38: {}\nB39: {}\nB40: {}\nB41: {}\nB42: {}\nB43: {}\nB44: {}\n" +
+// 			"B45: {}\nB46: {}\nB47: {}\nB48: {}\nB49: {}\nB50: {}\nB51: {}\n" +
+// 			"B52: {}\nB53: {}\nB54: {}\nB55: {}\nB56: {}\nB57: {}\nB58: {}\n" +
+// 			"B59: {}\nB60: {}\nB61: {}\nB62: {}\nB63: {}\nB64: {}\nB65: {}\n" +
+// 			"B66: {}\nB67: {}\nB68: {}\nB69: {}\nB70: {}\nB71: {}\nB72: {}\n" +
+// 			"B73: {}\nB74: {}\nB75: {}\nB76: {}\nB77: {}\nB78: {}\nB79: {}\n" +
+// 			"B80: {}\nB81: {}\nB82: {}\nB83: {}\nB84: {}\nB85: {}\nB86: {}\n" +
+// 			"B87: {}\nB88: {}\nB89: {}\nB90: {}\nB91: {}\nB92: {}\nB93: {}\n" +
+// 			"B94: {}\nB95: {}\nB96: {}\nB97: {}\nB98: {}\nB99: {}\nB100: {}\n" +
+// 			"B101: {}\nB102: {}\nB103: {}\nB104: {}\nB105: {}\nB106: {}\n" +
+// 			"B107: {}\nB108: {}\nB109: {}\nB110: {}\nB111: {}\nB112: {}\n" +
+// 			"B113: {}\nB114: {}\nB115: {}\nB116: {}\nB117: {}\nB118: {}\n" +
+// 			"B119: {}\nB120: {}\nB121: {}\nB122: {}\nB123: {}\nB124: {}\n" +
+// 			"B125: {}\nB126: {}\nB127: {}\nB128: {}\nB129: {}\nB130: {}\n" +
+// 			"B131: {}\nB132: {}\nB133: {}\nB134: {}\nB135: {}\nB136: {}\n" +
+// 			"B137: {}\nB138: {}\nB139: {}\nB140: {}\nB141: {}\nB142: {}\n" +
+// 			"B143: {}\nB144: {}\nB145: {}\nB146: {}\nB147: {}\nB148: {}\n" +
+// 			"B149: {}\nB150: {}\nB151: {}\nB152: {}\nB153: {}\nB154: {}\n" +
+// 			"B155: {}\nB156: {}\nB157: {}\nB158: {}\nB159: {}\n",
+// 	)
+
+// 	// Update the string representation after adding contact
+// 	if result := rt.String(); result != expectedNonEmpty {
+// 		t.Errorf("Expected string representation:\n%q\nbut got:\n%q", expectedNonEmpty, result)
+// 	}
+// }

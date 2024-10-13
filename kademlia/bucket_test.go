@@ -95,3 +95,43 @@ func TestLen(t *testing.T) {
 		t.Errorf("Expected bucket length to be 20, got %d", got)
 	}
 }
+
+func TestBucketAddContactAlreadyAtFront(t *testing.T) {
+	bucket := newBucket()
+	contact := NewContact(NewRandomKademliaID(), "192.168.0.1")
+
+	bucket.AddContact(contact)
+	bucket.AddContact(contact) // Add the same contact again
+
+	if bucket.Len() != 1 {
+		t.Errorf("Expected bucket length to be 1, got %d", bucket.Len())
+	}
+
+	if front := bucket.list.Front(); front.Value.(Contact).ID != contact.ID {
+		t.Errorf("Expected contact to be at the front")
+	}
+}
+
+func TestBucketRemoveNonExistentContact(t *testing.T) {
+	bucket := newBucket()
+	contact := NewContact(NewRandomKademliaID(), "192.168.0.1")
+	nonExistentID := NewRandomKademliaID()
+
+	bucket.AddContact(contact)
+	bucket.RemoveContact(nonExistentID)
+
+	if bucket.Len() != 1 {
+		t.Errorf("Expected bucket length to remain 1, got %d", bucket.Len())
+	}
+}
+
+func TestBucketEmptyGetContactAndCalcDistance(t *testing.T) {
+	bucket := newBucket()
+	targetID := NewRandomKademliaID()
+
+	contacts := bucket.GetContactAndCalcDistance(targetID)
+
+	if len(contacts) != 0 {
+		t.Errorf("Expected no contacts, got %d", len(contacts))
+	}
+}

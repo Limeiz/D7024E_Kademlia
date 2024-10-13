@@ -2,16 +2,17 @@ package kademlia
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
-	"io"
-	"context"
 )
 
 type Network struct {
@@ -19,22 +20,24 @@ type Network struct {
 	ResponseMap      map[KademliaID]chan MessageData
 	ResponseMapMutex sync.Mutex
 	Port             int
-	Timeout 		 int
+	Timeout          int
 }
 
 type MessageType uint8
 type MessageDirection uint8
 
 const (
-	PING       MessageType = 0
-	FIND_NODE  MessageType = 1
-	FIND_VALUE MessageType = 2
-	STORE      MessageType = 3
+	PING             MessageType = 0
+	FIND_NODE        MessageType = 1
+	FIND_VALUE       MessageType = 2
+	STORE            MessageType = 3
+	MAX_MESSAGE_TYPE MessageType = 4
 )
 
 const (
-	REQUEST  MessageDirection = 0
-	RESPONSE MessageDirection = 1
+	REQUEST               MessageDirection = 0
+	RESPONSE              MessageDirection = 1
+	MAX_MESSAGE_DIRECTION MessageDirection = 2
 )
 
 type MessageHeader struct {
@@ -82,6 +85,13 @@ func MessageDirectionToString(message_direction MessageDirection) string {
 }
 
 func EncodeMessageHeader(header MessageHeader) ([]byte, error) {
+	if header.Type >= MAX_MESSAGE_TYPE {
+		return nil, fmt.Errorf("invalid MessageType: %d", header.Type)
+	}
+
+	if header.Direction >= MAX_MESSAGE_DIRECTION {
+		return nil, fmt.Errorf("invalid MessageDirection: %d", header.Direction)
+	}
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.BigEndian, header.HeaderLength); err != nil {
 		return nil, err
@@ -191,7 +201,7 @@ func InitNetwork(node *Kademlia, timeout int) *Network {
 		Node:        node,
 		ResponseMap: make(map[KademliaID]chan MessageData),
 		Port:        8080,
-		Timeout: 	 timeout,
+		Timeout:     timeout,
 	}
 	return network
 }
@@ -208,38 +218,38 @@ func (network *Network) ServerInit() {
 }
 
 func (network *Network) ServerStart(port int) {
-    network.Port = port
-    addr := net.TCPAddr{
-        Port: port,
-        IP:   net.ParseIP("0.0.0.0"),
-    }
+	network.Port = port
+	addr := net.TCPAddr{
+		Port: port,
+		IP:   net.ParseIP("0.0.0.0"),
+	}
 
-    server := &http.Server{
-        Addr: addr.String(),
-    }
+	server := &http.Server{
+		Addr: addr.String(),
+	}
 
-    errChan := make(chan error, 1)
+	errChan := make(chan error, 1)
 
-    go func() {
-        if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-            errChan <- err
-        }
-    }()
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errChan <- err
+		}
+	}()
 
-    select {
-    case <-network.Node.ShutdownChan:
-        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-        defer cancel()
-        if err := server.Shutdown(ctx); err != nil {
-            log.Printf("Server Shutdown Failed: %+v", err)
-        } else {
-            log.Printf("Server Shutdown gracefully")
-        }
-    case err := <-errChan:
-        if err != nil {
-            log.Printf("Server error: %s\n", err)
-        }
-    }
+	select {
+	case <-network.Node.ShutdownChan:
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("Server Shutdown Failed: %+v", err)
+		} else {
+			log.Printf("Server Shutdown gracefully")
+		}
+	case err := <-errChan:
+		if err != nil {
+			log.Printf("Server error: %s\n", err)
+		}
+	}
 }
 
 func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) {
@@ -290,43 +300,43 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 }
 
 func (network *Network) OpenPortAndListen(port int) {
-    network.Port = port
-    addr := net.UDPAddr{
-        Port: port,
-        IP:   net.ParseIP("0.0.0.0"),
-    }
+	network.Port = port
+	addr := net.UDPAddr{
+		Port: port,
+		IP:   net.ParseIP("0.0.0.0"),
+	}
 
-    connection, err := net.ListenUDP("udp", &addr)
-    if err != nil {
-        log.Fatal(err)
-    }
+	connection, err := net.ListenUDP("udp", &addr)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    connection.SetReadBuffer(65535)
+	connection.SetReadBuffer(65535)
 
-    buffer := make([]byte, 65535)
-    done := make(chan struct{})
-    go func() {
-        <-network.Node.ShutdownChan
-        connection.Close()
-        close(done)
-    }()
+	buffer := make([]byte, 65535)
+	done := make(chan struct{})
+	go func() {
+		<-network.Node.ShutdownChan
+		connection.Close()
+		close(done)
+	}()
 
-    for {
-        n, remoteAddr, err := connection.ReadFromUDP(buffer)
-        if err != nil {
-            select {
-            case <-done:
-                log.Println("UDP listener shutting down gracefully")
-                return
-            default:
-                log.Println("Error reading UDP packet:", err)
-                continue
-            }
-        }
-        bufferCopy := make([]byte, n)
-        copy(bufferCopy, buffer[:n])
-        go network.HandleMessages(bufferCopy, n, remoteAddr)
-    }
+	for {
+		n, remoteAddr, err := connection.ReadFromUDP(buffer)
+		if err != nil {
+			select {
+			case <-done:
+				log.Println("UDP listener shutting down gracefully")
+				return
+			default:
+				log.Println("Error reading UDP packet:", err)
+				continue
+			}
+		}
+		bufferCopy := make([]byte, n)
+		copy(bufferCopy, buffer[:n])
+		go network.HandleMessages(bufferCopy, n, remoteAddr)
+	}
 }
 
 func GetLocalIP() string {
@@ -347,7 +357,7 @@ func StringTo15ByteArray(str string) [15]byte {
 	return arr
 }
 
-func Byte15ArrayToString(buffer [15]byte) string{
+func Byte15ArrayToString(buffer [15]byte) string {
 	return string(bytes.Trim(buffer[:], "\x00"))
 }
 
@@ -401,7 +411,7 @@ func (network *Network) SendMessageAndWait(contact *Contact, messageType Message
 		messageID = NewRandomKademliaID()
 	}
 	_, exists := network.ResponseMap[*messageID]
-	if exists{
+	if exists {
 		log.Printf("Warning: The messageID %s already exists", messageID.String())
 		return MessageData{}, errors.New("MessageID already has a channel associated with it")
 	}
