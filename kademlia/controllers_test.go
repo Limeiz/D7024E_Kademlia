@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// Helper function to create a mock network with the mock node
 func createMockNetwork() *Network {
 	id := NewKademliaID("0000000000000000000000000000000000000000")
 	me := NewContact(id, "localhost")
@@ -27,15 +26,13 @@ func createMockNetwork() *Network {
 		Timeout:          5,
 	}
 
-	// Associate the network with the Kademlia node
 	network.Node.Network = network
 	return network
 }
 
 func (k *Kademlia) TestPing(contact *Contact) error {
-	// Modify this logic based on your test case
 	if contact.Address == "127.0.0.1:8000" {
-		return nil // Simulate success for this address
+		return nil
 	}
 	return fmt.Errorf("Ping could not be sent to %s", contact.Address)
 }
@@ -61,7 +58,6 @@ func TestDefaultController(t *testing.T) {
 	}
 }
 
-// Test GetIDController
 func TestGetIDController(t *testing.T) {
 	network := createMockNetwork()
 	req := httptest.NewRequest("GET", "/getid", nil)
