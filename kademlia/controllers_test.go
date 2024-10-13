@@ -134,24 +134,90 @@ func TestPutController_ValidDataParam(t *testing.T) {
 }
 
 // Test GetController with valid hash parameter
-// func TestGetController_ValidHash(t *testing.T) {
-// 	network := createMockNetwork()
-// 	hash := NewKademliaID("mockhash123")
-// 	network.Node.Storage[*hash] = "mockData"
-// 	req := httptest.NewRequest("GET", fmt.Sprintf("/get?hash=%v", hash), nil)
-// 	w := httptest.NewRecorder()
+func TestGetController_ValidHash(t *testing.T) {
+	network := createMockNetwork()
+	hashedData := HashData("mockdata123")
+	hash := NewKademliaID(hashedData)
+	network.Node.Storage[*hash] = "mockdata123"
+	req := httptest.NewRequest("GET", fmt.Sprintf("/get?hash=%v", hash), nil)
+	w := httptest.NewRecorder()
 
-// 	network.GetController(w, req)
+	network.GetController(w, req)
 
-// 	resp := w.Result()
-// 	body, _ := io.ReadAll(resp.Body)
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
 
-// 	if resp.StatusCode != http.StatusOK {
-// 		t.Fatalf("Expected status OK; got %v", resp.Status)
-// 	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
 
-// 	expected := fmt.Sprintf("Data found for hash %v: mockData", hash)
-// 	if !strings.Contains(string(body), expected) {
-// 		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
-// 	}
-// }
+	expected := fmt.Sprintf("Data found for hash %v: mockdata123 on node %v", hash, network.Node.Routes.Me.ID.String())
+	if !strings.Contains(string(body), expected) {
+		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
+	}
+}
+
+func TestExitController(t *testing.T) {
+	network := createMockNetwork()
+	req := httptest.NewRequest("GET", "/exit", nil)
+	w := httptest.NewRecorder()
+
+	network.ExitController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
+
+	expected := "Shutting down node..."
+	if string(body) != expected {
+		t.Errorf("Expected response body to be %q, got %q", expected, string(body))
+	}
+}
+
+func TestShowRoutingTableController(t *testing.T) {
+	network := createMockNetwork()
+
+	req := httptest.NewRequest("GET", "/show-routing-table", nil)
+	w := httptest.NewRecorder()
+
+	network.ShowRoutingTableController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
+
+	expected := fmt.Sprintf("Routing Table:\n%s", network.Node.Routes.String())
+	if string(body) != expected {
+		t.Errorf("Expected response body to be %q, got %q", expected, string(body))
+	}
+}
+
+func TestShowStorageController(t *testing.T) {
+	network := createMockNetwork()
+	hashedData := HashData("mockdata123")
+	hash := NewKademliaID(hashedData)
+	network.Node.Storage[*hash] = "mockdata123"
+
+	req := httptest.NewRequest("GET", "/show-storage", nil)
+	w := httptest.NewRecorder()
+
+	network.ShowStorageController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
+
+	expected := fmt.Sprintf("Stored data:\nKey: %s, Value: mockdata123\n", hash.String())
+	if string(body) != expected {
+		t.Errorf("Expected response body to be %q, got %q", expected, string(body))
+	}
+}
