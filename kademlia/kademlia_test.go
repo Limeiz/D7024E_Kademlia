@@ -22,18 +22,42 @@ func TestInitNode(t *testing.T) {
 	}
 }
 
+// func TestHashSerializeAndDeserializeData(t *testing.T) {
+// 	data := "hej"
+// 	hexEncodedKey := HashData(string(data))
+// 	kademliaID := NewKademliaID(hexEncodedKey)
+
+// 	// Serialize the KademliaID
+// 	serializedData, err := SerializeData(kademliaID)
+// 	if err != nil {
+// 		t.Fatalf("Failed to serialize data: %v", err)
+// 	}
+
+// 	// Deserialize
+// 	var deserializedID KademliaID
+// 	deserializedID, err = DeserializeData[KademliaID](serializedData)
+// 	if err != nil {
+// 		t.Fatalf("Failed to deserialize data: %v", err)
+// 	}
+
+// 	// Check if the original ID and the deserialized ID are equal
+// 	if *kademliaID != deserializedID {
+// 		t.Errorf("Expected %v, but got %v", kademliaID, deserializedID)
+// 	}
+// }
+
 func TestHashSerializeAndDeserializeData(t *testing.T) {
 	data := "hej"
 	hexEncodedKey := HashData(string(data))
 	kademliaID := NewKademliaID(hexEncodedKey)
 
-	// Serialize the KademliaID
+	// Successful Serialization Test
 	serializedData, err := SerializeData(kademliaID)
 	if err != nil {
 		t.Fatalf("Failed to serialize data: %v", err)
 	}
 
-	// Deserialize
+	// Successful Deserialization Test
 	var deserializedID KademliaID
 	deserializedID, err = DeserializeData[KademliaID](serializedData)
 	if err != nil {
@@ -43,6 +67,39 @@ func TestHashSerializeAndDeserializeData(t *testing.T) {
 	// Check if the original ID and the deserialized ID are equal
 	if *kademliaID != deserializedID {
 		t.Errorf("Expected %v, but got %v", kademliaID, deserializedID)
+	}
+
+	// Test Error Handling for DeserializeData with corrupted data
+	corruptedData := []byte{0x00, 0x01, 0x02, 0x03, 0x04} // Random invalid bytes
+	_, err = DeserializeData[KademliaID](corruptedData)
+	if err == nil {
+		t.Fatal("Expected error during deserialization of corrupted data, but got none")
+	}
+
+	// Test Error Handling for SerializeData with a nil value
+	var nilKademliaID *KademliaID
+	_, err = SerializeData(nilKademliaID)
+	if err == nil {
+		t.Fatal("Expected error during serialization of nil data, but got none")
+	}
+
+	// Test Error Handling for DeserializeData with empty data
+	emptyData := []byte{}
+	_, err = DeserializeData[KademliaID](emptyData)
+	if err == nil {
+		t.Fatal("Expected error during deserialization of empty data, but got none")
+	}
+
+	type UnsupportedType struct {
+		ch chan int // gob cannot encode channels
+	}
+
+	unsupportedData := UnsupportedType{ch: make(chan int)}
+	_, err = SerializeData(unsupportedData)
+	if err == nil {
+		t.Fatal("Expected error during serialization of unsupported type, but got none")
+	} else {
+		t.Logf("Correctly failed to serialize unsupported data: %v", err)
 	}
 }
 
@@ -381,4 +438,47 @@ func TestProcessFindValueMessage(t *testing.T) {
 	if string(responseData) != string(expectedResponse) {
 		t.Errorf("Expected response data to be %q, got %q", string(expectedResponse), string(responseData))
 	}
+}
+
+func TestSendStoreRPC_Serialization(t *testing.T) {
+	kademlia := NewMockKademlia()
+	contact := &Contact{
+		ID:      NewRandomKademliaID(),
+		Address: "127.0.0.1:8000",
+	}
+
+	kademlia.Network = createMockNetwork().Node.Network
+	data := "Some test data"
+	key := NewKademliaID(HashData(data))
+
+	err := kademlia.SendStoreRPC(contact, key, data)
+	if err == nil || err.Error() != "Error: Store could not be sent to 127.0.0.1:8000 \n" {
+		t.Errorf("Expected Store could not be sent error, got: %v", err)
+	}
+}
+
+func TestPing_Failure(t *testing.T) {
+	kademlia := NewMockKademlia()
+	contact := &Contact{
+		ID:      NewRandomKademliaID(),
+		Address: "127.0.0.1:8000",
+	}
+
+	kademlia.Network = createMockNetwork().Node.Network
+
+	kademlia.Routes.AddContact(*contact)
+	if !kademlia.Routes.IsContactInTable(contact) {
+		t.Errorf("Expected contact %v to be in routing table after adding", contact.ID)
+	}
+
+	// Call the Ping method
+	err := kademlia.Ping(contact)
+	if err == nil || err.Error() != "Error: Ping could not be sent to 127.0.0.1:8000\n" {
+		t.Errorf("Expected Ping error, got: %v", err)
+	}
+
+	// // Check if the contact was removed from the routing table
+	// if kademlia.Routes.IsContactInTable(contact) {
+	// 	t.Errorf("Expected contact %v to be removed from routing table after ping failure", contact.ID)
+	// }
 }

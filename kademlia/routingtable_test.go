@@ -1,6 +1,7 @@
 package kademlia
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -112,6 +113,8 @@ func TestIsContactInTable(t *testing.T) {
 	rt := NewRoutingTable(me)
 	contact := NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8001")
 
+	rt.buckets[0] = nil
+
 	if rt.IsContactInTable(&contact) {
 		t.Error("Expected contact to NOT be in the table, but it was.")
 	}
@@ -121,6 +124,20 @@ func TestIsContactInTable(t *testing.T) {
 	if !rt.IsContactInTable(&contact) {
 		t.Error("Expected contact to be in the table, but it was not.")
 	}
+}
+
+func TestRoutingTableString(t *testing.T) {
+	me := NewContact(NewKademliaID("ffffffffffffffffffffffffffffffffffffffff"), "localhost:8000")
+	rt := NewRoutingTable(me)
+
+	contact1 := NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8001")
+	contact2 := NewContact(NewKademliaID("1111111100000000000000000000000000000000"), "localhost:8002")
+	rt.AddContact(contact1)
+	rt.AddContact(contact2)
+	rt.AddContact(NewContact(NewRandomKademliaID(), "localhost:8001"))
+	rt.AddContact(NewContact(NewRandomKademliaID(), "localhost:8003"))
+
+	fmt.Println(rt.String())
 }
 
 // func TestRoutingTableString(t *testing.T) {
