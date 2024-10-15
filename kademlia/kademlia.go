@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,6 +38,9 @@ type StoreData struct {
 
 // Please use these instead of creating a seriliaze and deserialize for every type of struct
 func SerializeData[T any](data T) ([]byte, error) {
+	if isNil(data) {
+		return nil, fmt.Errorf("cannot serialize nil data")
+	}
 	var buffer bytes.Buffer
 	encoder := gob.NewEncoder(&buffer)
 	if err := encoder.Encode(data); err != nil {
@@ -44,6 +48,10 @@ func SerializeData[T any](data T) ([]byte, error) {
 	}
 
 	return buffer.Bytes(), nil
+}
+
+func isNil[T any](v T) bool {
+	return reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil()
 }
 
 func DeserializeData[T any](data []byte) (T, error) {
