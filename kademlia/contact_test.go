@@ -17,8 +17,6 @@ func TestContact_CalcDistance(t *testing.T) {
 		t.Errorf("Expected contact1 distance to be calculated, got nil")
 	}
 }
-
-// Test Contact Less method
 func TestContact_Less(t *testing.T) {
 	id1 := NewKademliaID("0000000000000000000000000000000000000000")
 	id2 := NewKademliaID("1111111111111111111111111111111111111111")
@@ -35,7 +33,6 @@ func TestContact_Less(t *testing.T) {
 	}
 }
 
-// Test NewContact
 func TestNewContact(t *testing.T) {
 	id := NewKademliaID("0000000000000000000000000000000000000000")
 	address := "127.0.0.1:8080"
@@ -49,7 +46,6 @@ func TestNewContact(t *testing.T) {
 	}
 }
 
-// Test String for Contact
 func TestContact_String(t *testing.T) {
 	id := NewKademliaID("0000000000000000000000000000000000000000")
 	contact := NewContact(id, "127.0.0.1:8080")

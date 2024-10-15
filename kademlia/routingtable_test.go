@@ -113,6 +113,8 @@ func TestIsContactInTable(t *testing.T) {
 	rt := NewRoutingTable(me)
 	contact := NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8001")
 
+	rt.buckets[0] = nil
+
 	if rt.IsContactInTable(&contact) {
 		t.Error("Expected contact to NOT be in the table, but it was.")
 	}

@@ -153,6 +153,25 @@ func TestGetController_ValidHash(t *testing.T) {
 	}
 }
 
+func TestGetController_MissingHashParam(t *testing.T) {
+	network := createMockNetwork()
+	req := httptest.NewRequest("GET", "/get", nil)
+	w := httptest.NewRecorder()
+
+	network.GetController(w, req)
+
+	resp := w.Result()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Expected status BadRequest; got %v", resp.Status)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	expected := "Missing 'hash' parameter"
+	if !strings.Contains(string(body), expected) {
+		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
+	}
+}
+
 func TestExitController(t *testing.T) {
 	network := createMockNetwork()
 	req := httptest.NewRequest("GET", "/exit", nil)
@@ -215,5 +234,20 @@ func TestShowStorageController(t *testing.T) {
 	expected := fmt.Sprintf("Stored data:\nKey: %s, Value: mockdata123\n", hash.String())
 	if string(body) != expected {
 		t.Errorf("Expected response body to be %q, got %q", expected, string(body))
+	}
+}
+
+func TestBeginResponseWithXForwardedFor(t *testing.T) {
+	req := httptest.NewRequest("GET", "/ping", nil)
+	req.Header.Set("X-Forwarded-For", "203.0.113.195")
+
+	BeginResponse(req, "/ping")
+
+	// assume BeginResponse should have used "203.0.113.195" as clientIP
+	expectedClientIP := "203.0.113.195"
+	actualClientIP := req.Header.Get("X-Forwarded-For")
+
+	if actualClientIP != expectedClientIP {
+		t.Errorf("Expected clientIP to be %s, got %s", expectedClientIP, actualClientIP)
 	}
 }
