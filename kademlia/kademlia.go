@@ -10,7 +10,6 @@ import (
 	"os"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -89,11 +88,7 @@ func (kademlia *Kademlia) InitNetwork(target *Contact) {
 	attempt := 0
 	// Sometimes when it doesn't work, kick it in the butt again
 	// UDP can miss some messages since it get congested, so refer to message above
-	nodes, err := strconv.Atoi(os.Getenv("NUMBER_NODES"))
-	if err != nil {
-		nodes = 50
-	}
-	for attempt < (nodes / 5) {
+	for {
 		log.Printf("LookupContact attempt %d \n", attempt+1)
 		contacts, error := kademlia.LookupContact(target)
 		log.Printf("LookupContact attempt %d finished \n", attempt+1)
