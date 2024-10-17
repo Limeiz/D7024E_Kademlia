@@ -1,6 +1,7 @@
 package kademlia
 
 import (
+	"os"
 	"testing"
 )
 
@@ -8,13 +9,14 @@ func NewMockKademlia() *Kademlia {
 	me := NewKademliaID("FFFFFFFF00000000000000000000000000000000")
 	contact := NewContact(me, "127.0.0.1:8080")
 	return &Kademlia{
-		Storage: make(map[KademliaID]string),
+		Storage: make(map[KademliaID]*StorageItem),
 		Routes:  NewRoutingTable(contact),
 	}
 }
 
 func TestInitNode(t *testing.T) {
 	bootstrapID := NewKademliaID("2111111400000000000000000000000000000000")
+	os.Setenv("OBJECT_TTL", "10")
 	kademlia := InitNode(bootstrapID)
 
 	if kademlia == nil {
@@ -106,14 +108,16 @@ func TestHashSerializeAndDeserializeData(t *testing.T) {
 func TestStorage(t *testing.T) {
 	bootstrapID := NewKademliaID("FABFABFABFABFABFABFABFABFABFABFABFABFAB0")
 	data := "aa"
+	os.Setenv("OBJECT_TTL", "10")
+
 	kademlia := InitNode(bootstrapID)
 	hexEncodedKey := HashData(string(data))
 	kademliaID := NewKademliaID(hexEncodedKey)
 	//fmt.Printf("Data hash (key): %s\n", hexEncodedKey)
 
-	kademlia.Storage[*kademliaID] = string(data)
+	kademlia.StorageSet(kademliaID, &data)
 
-	storedValue, exists := kademlia.Storage[*kademliaID]
+	storedValue, exists := kademlia.StorageGet(kademliaID)
 	if !exists {
 		t.Error("Expected data to exist in storage, but it does not")
 	}
@@ -127,6 +131,7 @@ func TestStorage(t *testing.T) {
 
 func TestRecieveStoreRPC(t *testing.T) {
 	bootstrapID := NewKademliaID("FABFABFABFABFABFABFABFABFABFABFABFABFAB0")
+	os.Setenv("OBJECT_TTL", "10")
 	kademlia := InitNode(bootstrapID)
 
 	value := "mockData"
@@ -147,9 +152,7 @@ func TestRecieveStoreRPC(t *testing.T) {
 	}
 
 	// Check if the data was stored correctly
-	kademlia.StorageMapMutex.Lock()
-	storedValue, exists := kademlia.Storage[*key]
-	kademlia.StorageMapMutex.Unlock()
+	storedValue, exists := kademlia.StorageGet(key)
 
 	if !exists {
 		t.Errorf("Expected key %s to be stored, but it was not found.", key.String())
@@ -226,7 +229,7 @@ func TestLookupData_ExistingData(t *testing.T) {
 	value := "mockData"
 	hash := HashData(string(value))
 	key := NewKademliaID(hash)
-	kademlia.Storage[*key] = string(value)
+	kademlia.StorageSet(key, &value)
 
 	data, contacts, err := kademlia.LookupData(hash)
 	if err != nil {
@@ -384,13 +387,10 @@ func TestProcessFindValueMessage(t *testing.T) {
 	value := "storedValue"
 	hash := HashData(string(value))
 	key := NewKademliaID(hash)
-	kademlia.Storage[*key] = string(value)
-
-	validID := NewKademliaID(hash)
-	kademlia.Storage[*validID] = "storedValue"
+	kademlia.StorageSet(key, &value)
 
 	data := make([]byte, 20)
-	copy(data, validID[:])
+	copy(data, key[:])
 
 	// Valid
 	result, err := kademlia.ProcessFindValueMessage(&data)
@@ -481,4 +481,29 @@ func TestPing_Failure(t *testing.T) {
 	// if kademlia.Routes.IsContactInTable(contact) {
 	// 	t.Errorf("Expected contact %v to be removed from routing table after ping failure", contact.ID)
 	// }
+}
+
+func TestStorageExists(t *testing.T) {
+	bootstrapID := NewKademliaID("FABFABFABFABFABFABFABFABFABFABFABFABFAB0")
+	os.Setenv("OBJECT_TTL", "10")
+	kademlia := InitNode(bootstrapID)
+
+	value := "mockData"
+	hexEncodedKey := HashData(string(value))
+	key := NewKademliaID(hexEncodedKey)
+
+	// Test case 1: Key does not exist
+	exists := kademlia.StorageExists(key)
+	if exists {
+		t.Errorf("Expected key %s to not exist, but found it in storage", key.String())
+	}
+
+	// Store the key in Kademlia's storage
+	kademlia.StorageSet(key, &value)
+
+	// Test case 2: Key exists
+	exists = kademlia.StorageExists(key)
+	if !exists {
+		t.Errorf("Expected key %s to exist in storage, but it was not found", key.String())
+	}
 }
