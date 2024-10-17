@@ -17,7 +17,7 @@ func createMockNetwork() *Network {
 		Node: &Kademlia{
 			Routes:       NewRoutingTable(me), // Initialize RoutingTable if needed
 			Network:      nil,                 // Will be set later
-			Storage:      make(map[KademliaID]string),
+			Storage:      make(map[KademliaID]*StorageItem),
 			ShutdownChan: make(chan struct{}),
 		},
 		ResponseMap:      make(map[KademliaID]chan MessageData),
@@ -132,10 +132,11 @@ func TestPutController_ValidDataParam(t *testing.T) {
 // Test GetController with valid hash parameter
 func TestGetController_ValidHash(t *testing.T) {
 	network := createMockNetwork()
-	hashedData := HashData("mockdata123")
-	hash := NewKademliaID(hashedData)
-	network.Node.Storage[*hash] = "mockdata123"
-	req := httptest.NewRequest("GET", fmt.Sprintf("/get?hash=%v", hash), nil)
+	data := "mockdata123"
+	hashedData := HashData(data)
+	key := NewKademliaID(hashedData)
+	network.Node.StorageSet(key, &data)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/get?hash=%v", key), nil)
 	w := httptest.NewRecorder()
 
 	network.GetController(w, req)
@@ -147,7 +148,7 @@ func TestGetController_ValidHash(t *testing.T) {
 		t.Fatalf("Expected status OK; got %v", resp.Status)
 	}
 
-	expected := fmt.Sprintf("Data found for hash %v: mockdata123 on node %v", hash, network.Node.Routes.Me.ID.String())
+	expected := fmt.Sprintf("Data found for hash %v: mockdata123 on node %v", key, network.Node.Routes.Me.ID.String())
 	if !strings.Contains(string(body), expected) {
 		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
 	}
@@ -215,9 +216,10 @@ func TestShowRoutingTableController(t *testing.T) {
 
 func TestShowStorageController(t *testing.T) {
 	network := createMockNetwork()
-	hashedData := HashData("mockdata123")
-	hash := NewKademliaID(hashedData)
-	network.Node.Storage[*hash] = "mockdata123"
+	data := "mockdata123"
+	hashedData := HashData(data)
+	key := NewKademliaID(hashedData)
+	network.Node.StorageSet(key, &data)
 
 	req := httptest.NewRequest("GET", "/show-storage", nil)
 	w := httptest.NewRecorder()
@@ -231,7 +233,7 @@ func TestShowStorageController(t *testing.T) {
 		t.Fatalf("Expected status OK; got %v", resp.Status)
 	}
 
-	expected := fmt.Sprintf("Stored data:\nKey: %s, Value: mockdata123\n", hash.String())
+	expected := fmt.Sprintf("Stored data:\nKey: %s, Value: mockdata123\n", key.String())
 	if string(body) != expected {
 		t.Errorf("Expected response body to be %q, got %q", expected, string(body))
 	}
