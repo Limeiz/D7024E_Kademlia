@@ -61,6 +61,15 @@ func Init(server_port int) {
 		url_path := fmt.Sprintf("/get?hash=%s", hash)
 		SendHTTPRequest(server_port, url_path)
 
+	case "forget":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: forget <hash>")
+			return
+		}
+		hash := url.QueryEscape(os.Args[2])
+		url_path := fmt.Sprintf("/forget?hash=%s", hash)
+		SendHTTPRequest(server_port, url_path)
+
 	case "show-id":
 		url_path := fmt.Sprintf("/getid")
 		SendHTTPRequest(server_port, url_path)
@@ -81,8 +90,9 @@ func Init(server_port int) {
 	case "help":
 		fmt.Println("RPC commands:")
 		fmt.Println("ping <to>")
-		fmt.Println("put <data>")
+		fmt.Println("put \"<data>\"")
 		fmt.Println("get <hash>")
+		fmt.Println("forget <hash>")
 
 		fmt.Println("Show commands:")
 		fmt.Println("Usage: show-[node_variable]")

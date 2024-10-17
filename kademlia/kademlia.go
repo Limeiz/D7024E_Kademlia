@@ -10,20 +10,28 @@ import (
 	"os"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"strconv"
 )
 
 const alpha = 3
 
+type StorageItem struct {
+    Value      string
+    Expiration time.Time
+}
+
 type Kademlia struct {
-	Routes          *RoutingTable
-	Network         *Network
-	Storage         map[KademliaID]string
-	StorageMapMutex sync.Mutex
-	ShutdownChan    chan struct{}
+	Routes          		*RoutingTable
+	Network         		*Network
+	Storage         		map[KademliaID]*StorageItem
+	StorageMapMutex 		sync.Mutex
+	StorageRefreshList 		[]KademliaID
+	StorageRefreshListMutex sync.Mutex
+	ShutdownChan    		chan struct{}
+	TTL             		time.Duration
 }
 
 type FindValueResponse struct {
@@ -68,9 +76,15 @@ func DeserializeData[T any](data []byte) (T, error) {
 }
 
 func InitNode(bootstrap_id *KademliaID) *Kademlia {
+	ttl, err := strconv.Atoi(os.Getenv("OBJECT_TTL"))
+	if(err != nil){
+		log.Printf("Error: Couldn't parse TTL env value")
+		return nil
+	}
 	kademlia_node := Kademlia{
-		Storage:      make(map[KademliaID]string),
+		Storage:      make(map[KademliaID]*StorageItem),
 		ShutdownChan: make(chan struct{}),
+		TTL: time.Duration(ttl) * time.Second,
 	}
 	bootstrap_contact := NewContact(bootstrap_id, os.Getenv("BOOTSTRAP_NODE"))
 	if os.Getenv("NODE_TYPE") == "bootstrap" {
@@ -82,6 +96,9 @@ func InitNode(bootstrap_id *KademliaID) *Kademlia {
 		kademlia_node.Routes.AddContact(bootstrap_contact)
 	}
 
+	go kademlia_node.StorageStartEviction()
+	go kademlia_node.StorageStartRefreshing()
+
 	return &kademlia_node
 }
 
@@ -89,11 +106,7 @@ func (kademlia *Kademlia) InitNetwork(target *Contact) {
 	attempt := 0
 	// Sometimes when it doesn't work, kick it in the butt again
 	// UDP can miss some messages since it get congested, so refer to message above
-	nodes, err := strconv.Atoi(os.Getenv("NUMBER_NODES"))
-	if err != nil {
-		nodes = 50
-	}
-	for attempt < (nodes / 5) {
+	for {
 		log.Printf("LookupContact attempt %d \n", attempt+1)
 		contacts, error := kademlia.LookupContact(target)
 		log.Printf("LookupContact attempt %d finished \n", attempt+1)
@@ -145,7 +158,6 @@ func (kademlia *Kademlia) SendStoreRPC(contact *Contact, key *KademliaID, data s
 	}
 
 	return nil
-
 }
 
 func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte) error {
@@ -154,10 +166,147 @@ func (kademlia *Kademlia) RecieveStoreRPC(data *[]byte) error {
 		log.Printf("Error: Could not deserialize store data")
 		return err
 	}
-	kademlia.StorageMapMutex.Lock()
-	kademlia.Storage[deserialized_data.Key] = deserialized_data.Value
-	kademlia.StorageMapMutex.Unlock()
+	kademlia.StorageSet(&deserialized_data.Key, &deserialized_data.Value)
 	log.Printf("Data stored in node %s\n", kademlia.Routes.Me.ID.String())
+	return nil
+}
+
+func (kademlia *Kademlia) StorageExists(key *KademliaID) (bool) {
+    kademlia.StorageMapMutex.Lock()
+    defer kademlia.StorageMapMutex.Unlock()
+
+    _, found := kademlia.Storage[*key]
+    return found
+}
+
+func (kademlia *Kademlia) StorageSet(key *KademliaID, value *string) {
+    kademlia.StorageMapMutex.Lock()
+    defer kademlia.StorageMapMutex.Unlock()
+
+    kademlia.Storage[*key] = &StorageItem{
+        Value:      *value,
+        Expiration: time.Now().Add(kademlia.TTL),
+    }
+}
+
+func (kademlia *Kademlia) StorageGet(key *KademliaID) (string, bool) {
+    
+    kademlia.StorageMapMutex.Lock()
+    defer kademlia.StorageMapMutex.Unlock()
+
+    item, found := kademlia.Storage[*key]
+	if !found{
+		return "", false
+	}
+
+    item.Expiration = time.Now().Add(kademlia.TTL)
+    return item.Value, true
+}
+
+func (kademlia *Kademlia) StorageRefresh(key *KademliaID) (bool) {
+    kademlia.StorageMapMutex.Lock()
+    defer kademlia.StorageMapMutex.Unlock()
+
+    item, found := kademlia.Storage[*key]
+	if !found{
+		return false
+	}
+    item.Expiration = time.Now().Add(kademlia.TTL)
+    return true
+}
+
+func (kademlia *Kademlia) StorageStartEviction() {
+    ticker := time.NewTicker(time.Second)
+    for {
+        select {
+        case <-ticker.C:
+            kademlia.StorageEvictExpiredItems()
+        case <-kademlia.ShutdownChan:
+            ticker.Stop()
+            return
+        }
+    }
+}
+
+func (kademlia *Kademlia) StorageEvictExpiredItems() {
+    kademlia.StorageMapMutex.Lock()
+    defer kademlia.StorageMapMutex.Unlock()
+
+    for key, item := range kademlia.Storage {
+        if time.Now().After(item.Expiration) {
+            delete(kademlia.Storage, key)
+        }
+    }
+}
+
+func (kademlia *Kademlia) StorageStartRefreshing(){
+	ticker := time.NewTicker(kademlia.TTL / 2)
+	for{
+		select{
+		case <-ticker.C:
+			kademlia.StorageRefreshListMutex.Lock()
+			for _, hash := range kademlia.StorageRefreshList{
+				go kademlia.RefreshStorage(&hash) // Should have a threadpool for this
+			}
+			kademlia.StorageRefreshListMutex.Unlock()
+		case <-kademlia.ShutdownChan:
+			ticker.Stop()
+			return
+		}
+	}
+}
+
+func (kademlia *Kademlia) RegisterForRefresh(item_hash string){
+	kademlia_id := NewKademliaID(item_hash)
+	kademlia.StorageRefreshListMutex.Lock()
+	kademlia.StorageRefreshList = append(kademlia.StorageRefreshList, *kademlia_id)
+	kademlia.StorageRefreshListMutex.Unlock()
+}
+
+func (kademlia *Kademlia) DeregisterRefresh(item_hash string){
+	kademlia_id := NewKademliaID(item_hash)
+    kademlia.StorageRefreshListMutex.Lock()
+    defer kademlia.StorageRefreshListMutex.Unlock()
+    for i, id := range kademlia.StorageRefreshList {
+        if id.Equals(kademlia_id) {
+            kademlia.StorageRefreshList = append(kademlia.StorageRefreshList[:i], kademlia.StorageRefreshList[i+1:]...)
+            break
+        }
+    }
+}
+
+func (kademlia *Kademlia) RefreshStorage(item_hash *KademliaID) error{
+	targetContact := NewContact(item_hash, "")
+
+	closestContacts, lookup_err := kademlia.LookupContact(&targetContact)
+	if lookup_err != nil {
+		return lookup_err
+	}
+	fmt.Printf("Closest contact received: %v\n", closestContacts)
+	serializedValueID, err := SerializeKademliaID(item_hash)
+	if err != nil {
+		log.Printf("Failed to serialize the KademliaID of value: %v\n", err)
+		return err
+	}
+
+	for _, contact := range closestContacts {
+		go func(contact Contact) {
+			err := kademlia.Network.SendMessage(&contact, REFRESH, REQUEST, serializedValueID)
+			if err != nil {
+				log.Printf("Failed to send REFRESH RPC to %s: %v\n", contact.Address, err)
+			}
+		}(contact)
+	}
+	return nil
+}
+
+func (kademlia *Kademlia) ReceiveRefreshRPC(data *[]byte) error{
+	valueID, err := DeserializeKademliaID(*data)
+	if err != nil {
+		log.Printf("Failed to deserialize value ID: %v\n", err)
+		return err
+	}
+	kademlia.StorageRefresh(valueID)
 	return nil
 }
 
@@ -290,9 +439,7 @@ func (kademlia *Kademlia) LookupData(hash string) (string, []Contact, error) {
 	if kademliaID == nil {
 		return "", nil, fmt.Errorf("Invalid KademliaID for hash: %s", hash)
 	}
-	kademlia.StorageMapMutex.Lock()
-	data, exists := kademlia.Storage[*kademliaID]
-	kademlia.StorageMapMutex.Unlock()
+	data, exists := kademlia.StorageGet(kademliaID)
 
 	if exists {
 		return data, []Contact{kademlia.Routes.Me}, nil
@@ -429,13 +576,21 @@ func (kademlia *Kademlia) SendFindValueRPC(contact *Contact, valueID *KademliaID
 		ClosestContacts: make([]Contact, 0),
 	}
 
-	// Try parse response for value then contacts
-	response.Value = string(data.Data)
-	if len(response.Value) > 0 {
-		response.ClosestContacts = append(response.ClosestContacts, *contact) // also send the node it was found on THIS LINE
-		return response, nil
-	}
+	// Try parse contacts
 	contacts, err := DeserializeContacts(data.Data)
+	if err != nil {
+		// log.Printf("Failed to deserialize contacts: %v\n", err)
+
+		// Try parse string value
+		response.Value = string(data.Data)
+		if len(response.Value) > 0 {
+			response.ClosestContacts = append(response.ClosestContacts, *contact) // also send the node it was found on THIS LINE
+			return response, nil
+		}
+
+	}
+
+	contacts, err = DeserializeContacts(data.Data)
 	if err != nil {
 		log.Printf("Failed to deserialize contacts: %v\n", err)
 		return FindValueResponse{}, err
@@ -473,9 +628,7 @@ func (kademlia *Kademlia) ProcessFindValueMessage(data *[]byte) ([]byte, error) 
 	}
 
 	// Check if the value is stored locally.
-	kademlia.StorageMapMutex.Lock()
-	value, exists := kademlia.Storage[*valueID]
-	kademlia.StorageMapMutex.Unlock()
+	value, exists := kademlia.StorageGet(valueID)
 	if exists {
 		serializedValue := []byte(value)
 		return serializedValue, nil

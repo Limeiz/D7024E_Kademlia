@@ -64,6 +64,7 @@ func (network *Network) PutController(response http.ResponseWriter, request *htt
 		return
 	}
 
+	network.Node.RegisterForRefresh(hash)
 	fmt.Fprintf(response, "Data successfully stored with hash: %s", hash)
 	fmt.Printf("Data stored with hash: %s\n", hash)
 }
@@ -88,10 +89,8 @@ func (network *Network) GetController(response http.ResponseWriter, request *htt
 	if data != "" {
 		if len(nodes) > 0 {
 			fmt.Fprintf(response, "Data found for hash %s: %s on node %v", hash, data, nodes[0].ID.String())
-		} else {
-			fmt.Fprintf(response, "Data found for hash %s: %s, on unknown node", hash, data) // should not happen
+			return
 		}
-		return
 	}
 
 	if len(nodes) == 0 {
@@ -103,6 +102,21 @@ func (network *Network) GetController(response http.ResponseWriter, request *htt
 	for _, node := range nodes {
 		fmt.Fprintf(response, "- Node ID: %s, Address: %s\n", node.ID.String(), node.Address)
 	}
+}
+
+func (network *Network) ForgetController(response http.ResponseWriter, request *http.Request) {
+	BeginResponse(request, "/forget")
+	hash := request.FormValue("hash")
+
+	fmt.Printf("Received hash: %s\n", hash)
+
+	if hash == "" {
+		http.Error(response, "Missing 'hash' parameter", http.StatusBadRequest)
+		return
+	}
+
+	network.Node.DeregisterRefresh(hash)
+	fmt.Fprintf(response, "Stopped refreshing item %s", hash)
 }
 
 func (network *Network) ExitController(response http.ResponseWriter, request *http.Request) {
@@ -120,7 +134,7 @@ func (network *Network) ShowStorageController(response http.ResponseWriter, requ
 	BeginResponse(request, "/show-storage")
 	responseString := "Stored data:\n"
 	for key, value := range network.Node.Storage {
-		responseString += fmt.Sprintf("Key: %s, Value: %s\n", key.String(), value)
+		responseString += fmt.Sprintf("Key: %s, Value: %s\n", key.String(), value.Value)
 	}
 	fmt.Fprintf(response, "%s", responseString)
 }

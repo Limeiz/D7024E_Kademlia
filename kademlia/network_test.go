@@ -25,6 +25,12 @@ func TestMessageTypeToString(t *testing.T) {
 		t.Errorf("Expected %s for FIND_VALUE, got %s", expected, result)
 	}
 
+	result = MessageTypeToString(REFRESH)
+	expected = "REFRESH"
+	if result != expected {
+		t.Errorf("Expected %s for REFRESH, got %s", expected, result)
+	}
+
 	result = MessageTypeToString(STORE)
 	expected = "STORE"
 	if result != expected {
@@ -340,7 +346,7 @@ func TestEncodeMessageHeaderInvalidTypeAndDirection(t *testing.T) {
 	// Invalid Message Type
 	header.Type = MAX_MESSAGE_TYPE
 	_, err := EncodeMessageHeader(header)
-	if err == nil || err.Error() != "invalid MessageType: 4" {
+	if err == nil || err.Error() != "invalid MessageType: 5" {
 		t.Errorf("Expected invalid MessageType error, got %v", err)
 	}
 

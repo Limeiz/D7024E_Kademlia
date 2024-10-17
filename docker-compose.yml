@@ -17,6 +17,7 @@ services:
       - SERVER_PORT=3000
       - CONTAINER_NAME=${HOSTNAME}
       - NETWORK_TIMEOUT=30 # In seconds
+      - OBJECT_TTL=30 # In seconds
     networks:
       kademlia_network:
         ipv4_address: 192.168.0.107
@@ -41,7 +42,7 @@ services:
       - CONTAINER_NAME=${HOSTNAME}
       - BOOTSTRAP_ID=FABFABFABFABFABFABFABFABFABFABFABFABFAB0
       - NETWORK_TIMEOUT=30 # In seconds
-      - NUMBER_NODES=50
+      - OBJECT_TTL=30 # In seconds
     networks:
       kademlia_network:
     depends_on:

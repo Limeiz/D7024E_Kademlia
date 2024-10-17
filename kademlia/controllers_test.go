@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -15,9 +16,9 @@ func createMockNetwork() *Network {
 	me := NewContact(id, "localhost")
 	network := &Network{
 		Node: &Kademlia{
-			Routes:       NewRoutingTable(me), // Initialize RoutingTable if needed
-			Network:      nil,                 // Will be set later
-			Storage:      make(map[KademliaID]string),
+			Routes:       NewRoutingTable(me),
+			Network:      nil,
+			Storage:      make(map[KademliaID]*StorageItem),
 			ShutdownChan: make(chan struct{}),
 		},
 		ResponseMap:      make(map[KademliaID]chan MessageData),
@@ -37,7 +38,6 @@ func (k *Kademlia) TestPing(contact *Contact) error {
 	return fmt.Errorf("Ping could not be sent to %s", contact.Address)
 }
 
-// Test DefaultController
 func TestDefaultController(t *testing.T) {
 	network := createMockNetwork()
 	req := httptest.NewRequest("GET", "/", nil)
@@ -107,9 +107,11 @@ func TestPutController_MissingDataParam(t *testing.T) {
 	}
 }
 
+// Det här testat ska nog funka, men får de inte att funka längre
 // Test PutController with valid "data" parameter
 func TestPutController_ValidDataParam(t *testing.T) {
 	network := createMockNetwork()
+	os.Setenv("OBJECT_TTL", "10")
 	req := httptest.NewRequest("POST", "/put", strings.NewReader("data=sampledata"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -132,10 +134,11 @@ func TestPutController_ValidDataParam(t *testing.T) {
 // Test GetController with valid hash parameter
 func TestGetController_ValidHash(t *testing.T) {
 	network := createMockNetwork()
-	hashedData := HashData("mockdata123")
-	hash := NewKademliaID(hashedData)
-	network.Node.Storage[*hash] = "mockdata123"
-	req := httptest.NewRequest("GET", fmt.Sprintf("/get?hash=%v", hash), nil)
+	data := "mockdata123"
+	hashedData := HashData(data)
+	key := NewKademliaID(hashedData)
+	network.Node.StorageSet(key, &data)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/get?hash=%v", key), nil)
 	w := httptest.NewRecorder()
 
 	network.GetController(w, req)
@@ -147,7 +150,7 @@ func TestGetController_ValidHash(t *testing.T) {
 		t.Fatalf("Expected status OK; got %v", resp.Status)
 	}
 
-	expected := fmt.Sprintf("Data found for hash %v: mockdata123 on node %v", hash, network.Node.Routes.Me.ID.String())
+	expected := fmt.Sprintf("Data found for hash %v: mockdata123 on node %v", key, network.Node.Routes.Me.ID.String())
 	if !strings.Contains(string(body), expected) {
 		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
 	}
@@ -167,6 +170,31 @@ func TestGetController_MissingHashParam(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	expected := "Missing 'hash' parameter"
+	if !strings.Contains(string(body), expected) {
+		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
+	}
+}
+
+func TestGetController_NotFound(t *testing.T) {
+	network := createMockNetwork()
+	id := NewRandomKademliaID()
+	network.Node.Routes.AddContact(NewContact(id, "localhost"))
+	data := "mockdata123"
+	hashedData := HashData(data)
+	key := NewKademliaID(hashedData)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/get?hash=%v", key), nil)
+	w := httptest.NewRecorder()
+
+	network.GetController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
+
+	expected := fmt.Sprintf("Data not found for hash %s. Closest nodes are:\n- Node ID: %s, Address: localhost\n", hashedData, id)
 	if !strings.Contains(string(body), expected) {
 		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
 	}
@@ -215,9 +243,10 @@ func TestShowRoutingTableController(t *testing.T) {
 
 func TestShowStorageController(t *testing.T) {
 	network := createMockNetwork()
-	hashedData := HashData("mockdata123")
-	hash := NewKademliaID(hashedData)
-	network.Node.Storage[*hash] = "mockdata123"
+	data := "mockdata123"
+	hashedData := HashData(data)
+	key := NewKademliaID(hashedData)
+	network.Node.StorageSet(key, &data)
 
 	req := httptest.NewRequest("GET", "/show-storage", nil)
 	w := httptest.NewRecorder()
@@ -231,7 +260,7 @@ func TestShowStorageController(t *testing.T) {
 		t.Fatalf("Expected status OK; got %v", resp.Status)
 	}
 
-	expected := fmt.Sprintf("Stored data:\nKey: %s, Value: mockdata123\n", hash.String())
+	expected := fmt.Sprintf("Stored data:\nKey: %s, Value: mockdata123\n", key.String())
 	if string(body) != expected {
 		t.Errorf("Expected response body to be %q, got %q", expected, string(body))
 	}
@@ -249,5 +278,46 @@ func TestBeginResponseWithXForwardedFor(t *testing.T) {
 
 	if actualClientIP != expectedClientIP {
 		t.Errorf("Expected clientIP to be %s, got %s", expectedClientIP, actualClientIP)
+	}
+}
+
+func TestForgetController_MissingHashParam(t *testing.T) {
+	network := createMockNetwork()
+	req := httptest.NewRequest("POST", "/forget", nil)
+	w := httptest.NewRecorder()
+
+	network.ForgetController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Expected status BadRequest; got %v", resp.Status)
+	}
+
+	expected := "Missing 'hash' parameter"
+	if !strings.Contains(string(body), expected) {
+		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
+	}
+}
+
+func TestForgetController_ValidHashParam(t *testing.T) {
+	network := createMockNetwork()
+	hash := "data"
+	req := httptest.NewRequest("POST", fmt.Sprintf("/forget?hash=%s", hash), nil) // Prepare the request with the hash
+	w := httptest.NewRecorder()
+
+	network.ForgetController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
+
+	expected := fmt.Sprintf("Stopped refreshing item %s", hash)
+	if string(body) != expected {
+		t.Errorf("Expected response body to be %q, got %q", expected, string(body))
 	}
 }

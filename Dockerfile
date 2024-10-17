@@ -1,4 +1,4 @@
-FROM golang:1.21 as builder
+FROM golang:latest as builder
 
 WORKDIR /app
 
@@ -12,10 +12,11 @@ RUN go mod tidy
 WORKDIR /app/main
 RUN go build -o /app/kademlia_main .
 
-FROM ubuntu:latest
+FROM golang:latest
 
 RUN apt-get update && apt-get install -y \
-    hping3
+    hping3 \
+    netcat-openbsd
 
 WORKDIR /app
 COPY --from=builder /app/kademlia_main /app/kademlia_main
