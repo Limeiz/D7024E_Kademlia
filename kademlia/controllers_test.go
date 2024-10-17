@@ -15,8 +15,8 @@ func createMockNetwork() *Network {
 	me := NewContact(id, "localhost")
 	network := &Network{
 		Node: &Kademlia{
-			Routes:       NewRoutingTable(me), // Initialize RoutingTable if needed
-			Network:      nil,                 // Will be set later
+			Routes:       NewRoutingTable(me),
+			Network:      nil,
 			Storage:      make(map[KademliaID]*StorageItem),
 			ShutdownChan: make(chan struct{}),
 		},
@@ -37,7 +37,6 @@ func (k *Kademlia) TestPing(contact *Contact) error {
 	return fmt.Errorf("Ping could not be sent to %s", contact.Address)
 }
 
-// Test DefaultController
 func TestDefaultController(t *testing.T) {
 	network := createMockNetwork()
 	req := httptest.NewRequest("GET", "/", nil)
@@ -252,5 +251,46 @@ func TestBeginResponseWithXForwardedFor(t *testing.T) {
 
 	if actualClientIP != expectedClientIP {
 		t.Errorf("Expected clientIP to be %s, got %s", expectedClientIP, actualClientIP)
+	}
+}
+
+func TestForgetController_MissingHashParam(t *testing.T) {
+	network := createMockNetwork()
+	req := httptest.NewRequest("POST", "/forget", nil)
+	w := httptest.NewRecorder()
+
+	network.ForgetController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Expected status BadRequest; got %v", resp.Status)
+	}
+
+	expected := "Missing 'hash' parameter"
+	if !strings.Contains(string(body), expected) {
+		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
+	}
+}
+
+func TestForgetController_ValidHashParam(t *testing.T) {
+	network := createMockNetwork()
+	hash := "data"
+	req := httptest.NewRequest("POST", fmt.Sprintf("/forget?hash=%s", hash), nil) // Prepare the request with the hash
+	w := httptest.NewRecorder()
+
+	network.ForgetController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
+
+	expected := fmt.Sprintf("Stopped refreshing item %s", hash)
+	if string(body) != expected {
+		t.Errorf("Expected response body to be %q, got %q", expected, string(body))
 	}
 }

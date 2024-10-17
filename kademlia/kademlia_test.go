@@ -3,6 +3,7 @@ package kademlia
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func NewMockKademlia() *Kademlia {
@@ -15,13 +16,44 @@ func NewMockKademlia() *Kademlia {
 }
 
 func TestInitNode(t *testing.T) {
-	bootstrapID := NewKademliaID("2111111400000000000000000000000000000000")
 	os.Setenv("OBJECT_TTL", "10")
+	os.Setenv("NODE_TYPE", "bootstrap")
+	os.Setenv("BOOTSTRAP_NODE", "127.0.0.1:8080")
+
+	bootstrapID := NewKademliaID("2111111400000000000000000000000000000000")
+
 	kademlia := InitNode(bootstrapID)
 
 	if kademlia == nil {
 		t.Errorf("Expected kademlia node to be initialized, but got nil.")
+		return
 	}
+
+	expectedTTL := 10 * time.Second
+	if kademlia.TTL != expectedTTL {
+		t.Errorf("Expected TTL to be %v, got %v", expectedTTL, kademlia.TTL)
+	}
+
+	if len(kademlia.Storage) != 0 {
+		t.Errorf("Expected Storage to be initialized as an empty map, got %v", kademlia.Storage)
+	}
+
+	os.Unsetenv("OBJECT_TTL")
+	os.Unsetenv("NODE_TYPE")
+	os.Unsetenv("BOOTSTRAP_NODE")
+}
+
+func TestInitNodeInvalidTTL(t *testing.T) {
+	os.Setenv("OBJECT_TTL", "invalid_ttl")
+
+	bootstrapID := NewKademliaID("2111111400000000000000000000000000000000")
+	kademlia := InitNode(bootstrapID)
+
+	if kademlia != nil {
+		t.Errorf("Expected kademlia node to be nil due to invalid TTL, but got: %+v", kademlia)
+	}
+
+	os.Unsetenv("OBJECT_TTL")
 }
 
 // func TestHashSerializeAndDeserializeData(t *testing.T) {
@@ -122,7 +154,6 @@ func TestStorage(t *testing.T) {
 		t.Error("Expected data to exist in storage, but it does not")
 	}
 
-	// Verify that the stored value matches the original data
 	if storedValue != data {
 		t.Errorf("Expected stored value to be '%s', got '%s'", data, storedValue)
 	}
@@ -139,19 +170,16 @@ func TestRecieveStoreRPC(t *testing.T) {
 	key := NewKademliaID(hexEncodedKey)
 	storeData := StoreData{Key: *key, Value: value}
 
-	// Serialize the mock data
 	serializedData, err := SerializeData(storeData)
 	if err != nil {
 		t.Fatalf("Failed to serialize data: %v", err)
 	}
 
-	// Call the RecieveStoreRPC method
 	err = kademlia.RecieveStoreRPC(&serializedData)
 	if err != nil {
 		t.Fatalf("RecieveStoreRPC returned an error: %v", err)
 	}
 
-	// Check if the data was stored correctly
 	storedValue, exists := kademlia.StorageGet(key)
 
 	if !exists {
@@ -163,23 +191,19 @@ func TestRecieveStoreRPC(t *testing.T) {
 }
 
 func TestSerializeAndDeserializeContact(t *testing.T) {
-	// Create a contact
 	contactID := NewKademliaID("FABFABFABFABFABFABFABFABFABFABFABFABFAB0")
 	contact := NewContact(contactID, "127.0.0.1:8080")
 
-	// Serialize the contact
 	serializedData, err := SerializeSingleContact(contact)
 	if err != nil {
 		t.Fatalf("Failed to serialize contact: %v", err)
 	}
 
-	// Deserialize the contact
 	deserializedContact, err := DeserializeSingleContact(serializedData)
 	if err != nil {
 		t.Fatalf("Failed to deserialize contact: %v", err)
 	}
 
-	// Check if the original contact and the deserialized contact are equal
 	if *contact.ID != *deserializedContact.ID || contact.Address != deserializedContact.Address {
 		t.Errorf("Expected deserialized contact to be %+v, but got %+v", contact, deserializedContact)
 	}
@@ -505,5 +529,20 @@ func TestStorageExists(t *testing.T) {
 	exists = kademlia.StorageExists(key)
 	if !exists {
 		t.Errorf("Expected key %s to exist in storage, but it was not found", key.String())
+	}
+}
+
+func TestStorageItemUsage(t *testing.T) {
+	item := StorageItem{
+		Value:      "example value",
+		Expiration: time.Now().Add(10 * time.Second), // Set expiration to 10 seconds from now
+	}
+
+	if item.Value != "example value" {
+		t.Errorf("Expected item.Value to be 'example value', got '%s'", item.Value)
+	}
+
+	if item.Expiration.Before(time.Now()) {
+		t.Error("Expected item.Expiration to be in the future, but it is not")
 	}
 }
