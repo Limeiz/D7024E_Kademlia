@@ -24,12 +24,14 @@ type StorageItem struct {
 }
 
 type Kademlia struct {
-	Routes          *RoutingTable
-	Network         *Network
-	Storage         map[KademliaID]*StorageItem
-	StorageMapMutex sync.Mutex
-	ShutdownChan    chan struct{}
-	TTL             time.Duration
+	Routes          		*RoutingTable
+	Network         		*Network
+	Storage         		map[KademliaID]*StorageItem
+	StorageMapMutex 		sync.Mutex
+	StorageRefreshList 		[]KademliaID
+	StorageRefreshListMutex sync.Mutex
+	ShutdownChan    		chan struct{}
+	TTL             		time.Duration
 }
 
 type FindValueResponse struct {
@@ -95,6 +97,7 @@ func InitNode(bootstrap_id *KademliaID) *Kademlia {
 	}
 
 	go kademlia_node.StorageStartEviction()
+	go kademlia_node.StorageStartRefreshing()
 
 	return &kademlia_node
 }
@@ -234,6 +237,77 @@ func (kademlia *Kademlia) StorageEvictExpiredItems() {
             delete(kademlia.Storage, key)
         }
     }
+}
+
+func (kademlia *Kademlia) StorageStartRefreshing(){
+	ticker := time.NewTicker(kademlia.TTL / 2)
+	for{
+		select{
+		case <-ticker.C:
+			kademlia.StorageRefreshListMutex.Lock()
+			for _, hash := range kademlia.StorageRefreshList{
+				go kademlia.RefreshStorage(&hash) // Should have a threadpool for this
+			}
+			kademlia.StorageRefreshListMutex.Unlock()
+		case <-kademlia.ShutdownChan:
+			ticker.Stop()
+			return
+		}
+	}
+}
+
+func (kademlia *Kademlia) RegisterForRefresh(item_hash string){
+	kademlia_id := NewKademliaID(item_hash)
+	kademlia.StorageRefreshListMutex.Lock()
+	kademlia.StorageRefreshList = append(kademlia.StorageRefreshList, *kademlia_id)
+	kademlia.StorageRefreshListMutex.Unlock()
+}
+
+func (kademlia *Kademlia) DeregisterRefresh(item_hash string){
+	kademlia_id := NewKademliaID(item_hash)
+    kademlia.StorageRefreshListMutex.Lock()
+    defer kademlia.StorageRefreshListMutex.Unlock()
+    for i, id := range kademlia.StorageRefreshList {
+        if id.Equals(kademlia_id) {
+            kademlia.StorageRefreshList = append(kademlia.StorageRefreshList[:i], kademlia.StorageRefreshList[i+1:]...)
+            break
+        }
+    }
+}
+
+func (kademlia *Kademlia) RefreshStorage(item_hash *KademliaID) error{
+	targetContact := NewContact(item_hash, "")
+
+	closestContacts, lookup_err := kademlia.LookupContact(&targetContact)
+	if lookup_err != nil {
+		return lookup_err
+	}
+	fmt.Printf("Closest contact received: %v\n", closestContacts)
+	serializedValueID, err := SerializeKademliaID(item_hash)
+	if err != nil {
+		log.Printf("Failed to serialize the KademliaID of value: %v\n", err)
+		return err
+	}
+
+	for _, contact := range closestContacts {
+		go func(contact Contact) {
+			err := kademlia.Network.SendMessage(&contact, REFRESH, REQUEST, serializedValueID)
+			if err != nil {
+				log.Printf("Failed to send REFRESH RPC to %s: %v\n", contact.Address, err)
+			}
+		}(contact)
+	}
+	return nil
+}
+
+func (kademlia *Kademlia) ReceiveRefreshRPC(data *[]byte) error{
+	valueID, err := DeserializeKademliaID(*data)
+	if err != nil {
+		log.Printf("Failed to deserialize value ID: %v\n", err)
+		return err
+	}
+	kademlia.StorageRefresh(valueID)
+	return nil
 }
 
 func (kademlia *Kademlia) LookupContact(target *Contact) ([]Contact, error) {

@@ -31,7 +31,8 @@ const (
 	FIND_NODE        MessageType = 1
 	FIND_VALUE       MessageType = 2
 	STORE            MessageType = 3
-	MAX_MESSAGE_TYPE MessageType = 4
+	REFRESH			 MessageType = 4
+	MAX_MESSAGE_TYPE MessageType = 5
 )
 
 const (
@@ -68,6 +69,8 @@ func MessageTypeToString(message_type MessageType) string {
 		return "FIND_VALUE"
 	case STORE:
 		return "STORE"
+	case REFRESH:
+		return "REFRESH"
 	default:
 		return "NIL"
 	}
@@ -211,6 +214,7 @@ func (network *Network) ServerInit() {
 	http.HandleFunc("/ping", network.PingController)
 	http.HandleFunc("/put", network.PutController)
 	http.HandleFunc("/get", network.GetController)
+	http.HandleFunc("/forget", network.ForgetController)
 	http.HandleFunc("/getid", network.GetID)
 	http.HandleFunc("/show-routing-table", network.ShowRoutingTableController)
 	http.HandleFunc("/show-storage", network.ShowStorageController)
@@ -300,6 +304,11 @@ func (network *Network) HandleMessages(buffer []byte, n int, addr *net.UDPAddr) 
 			err = network.SendMessage(&sender_contact, STORE, RESPONSE, []byte{}, &message.Header.MessageID)
 			if err != nil {
 				log.Printf("Failed to send STORE successful to %s: %v \n", sender_contact.Address, err)
+			}
+		} else if message.Header.Type == REFRESH{
+			err = network.Node.ReceiveRefreshRPC(&message.Data)
+			if err != nil {
+				log.Printf("Failed to process REFRESH message %s: %v \n", sender_contact.Address, err)
 			}
 		}
 	}

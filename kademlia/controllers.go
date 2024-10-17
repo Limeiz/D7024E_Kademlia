@@ -58,6 +58,7 @@ func (network *Network) PutController(response http.ResponseWriter, request *htt
 	}
 
 	hash, err := network.Node.Store([]byte(data))
+	network.Node.RegisterForRefresh(hash)
 
 	if err != nil {
 		fmt.Fprintf(response, "Error: Could not store data: %v", err)
@@ -103,6 +104,22 @@ func (network *Network) GetController(response http.ResponseWriter, request *htt
 	for _, node := range nodes {
 		fmt.Fprintf(response, "- Node ID: %s, Address: %s\n", node.ID.String(), node.Address)
 	}
+}
+
+
+func (network *Network) ForgetController(response http.ResponseWriter, request *http.Request) {
+	BeginResponse(request, "/forget")
+	hash := request.FormValue("hash")
+
+	fmt.Printf("Received hash: %s\n", hash)
+
+	if hash == "" {
+		http.Error(response, "Missing 'hash' parameter", http.StatusBadRequest)
+		return
+	}
+
+	network.Node.DeregisterRefresh(hash)
+	fmt.Fprintf(response, "Stopped refreshing item %s", hash)
 }
 
 func (network *Network) ExitController(response http.ResponseWriter, request *http.Request) {
