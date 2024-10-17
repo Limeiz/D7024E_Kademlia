@@ -25,6 +25,12 @@ func TestMessageTypeToString(t *testing.T) {
 		t.Errorf("Expected %s for FIND_VALUE, got %s", expected, result)
 	}
 
+	result = MessageTypeToString(REFRESH)
+	expected = "REFRESH"
+	if result != expected {
+		t.Errorf("Expected %s for REFRESH, got %s", expected, result)
+	}
+
 	result = MessageTypeToString(STORE)
 	expected = "STORE"
 	if result != expected {

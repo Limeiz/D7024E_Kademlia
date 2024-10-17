@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -108,26 +109,27 @@ func TestPutController_MissingDataParam(t *testing.T) {
 
 // Det här testat ska nog funka, men får de inte att funka längre
 // Test PutController with valid "data" parameter
-// func TestPutController_ValidDataParam(t *testing.T) {
-// 	network := createMockNetwork()
-// 	req := httptest.NewRequest("POST", "/put", strings.NewReader("data=sampledata"))
-// 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-// 	w := httptest.NewRecorder()
+func TestPutController_ValidDataParam(t *testing.T) {
+	network := createMockNetwork()
+	os.Setenv("OBJECT_TTL", "10")
+	req := httptest.NewRequest("POST", "/put", strings.NewReader("data=sampledata"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
 
-// 	network.PutController(w, req)
+	network.PutController(w, req)
 
-// 	resp := w.Result()
-// 	body, _ := io.ReadAll(resp.Body)
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
 
-// 	if resp.StatusCode != http.StatusOK {
-// 		t.Fatalf("Expected status OK; got %v", resp.Status)
-// 	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
 
-// 	expected := "Error: Could not store data: No contacts found in the routing table."
-// 	if !strings.Contains(string(body), expected) {
-// 		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
-// 	}
-// }
+	expected := "Error: Could not store data: No contacts found in the routing table."
+	if !strings.Contains(string(body), expected) {
+		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
+	}
+}
 
 // Test GetController with valid hash parameter
 func TestGetController_ValidHash(t *testing.T) {
@@ -168,6 +170,31 @@ func TestGetController_MissingHashParam(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	expected := "Missing 'hash' parameter"
+	if !strings.Contains(string(body), expected) {
+		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
+	}
+}
+
+func TestGetController_NotFound(t *testing.T) {
+	network := createMockNetwork()
+	id := NewRandomKademliaID()
+	network.Node.Routes.AddContact(NewContact(id, "localhost"))
+	data := "mockdata123"
+	hashedData := HashData(data)
+	key := NewKademliaID(hashedData)
+	req := httptest.NewRequest("GET", fmt.Sprintf("/get?hash=%v", key), nil)
+	w := httptest.NewRecorder()
+
+	network.GetController(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected status OK; got %v", resp.Status)
+	}
+
+	expected := fmt.Sprintf("Data not found for hash %s. Closest nodes are:\n- Node ID: %s, Address: localhost\n", hashedData, id)
 	if !strings.Contains(string(body), expected) {
 		t.Errorf("Expected response body to contain %q, got %q", expected, string(body))
 	}

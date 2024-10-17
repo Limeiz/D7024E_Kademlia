@@ -58,13 +58,13 @@ func (network *Network) PutController(response http.ResponseWriter, request *htt
 	}
 
 	hash, err := network.Node.Store([]byte(data))
-	network.Node.RegisterForRefresh(hash)
 
 	if err != nil {
 		fmt.Fprintf(response, "Error: Could not store data: %v", err)
 		return
 	}
 
+	network.Node.RegisterForRefresh(hash)
 	fmt.Fprintf(response, "Data successfully stored with hash: %s", hash)
 	fmt.Printf("Data stored with hash: %s\n", hash)
 }
@@ -89,10 +89,8 @@ func (network *Network) GetController(response http.ResponseWriter, request *htt
 	if data != "" {
 		if len(nodes) > 0 {
 			fmt.Fprintf(response, "Data found for hash %s: %s on node %v", hash, data, nodes[0].ID.String())
-		} else {
-			fmt.Fprintf(response, "Data found for hash %s: %s, on unknown node", hash, data) // should not happen
+			return
 		}
-		return
 	}
 
 	if len(nodes) == 0 {
@@ -105,7 +103,6 @@ func (network *Network) GetController(response http.ResponseWriter, request *htt
 		fmt.Fprintf(response, "- Node ID: %s, Address: %s\n", node.ID.String(), node.Address)
 	}
 }
-
 
 func (network *Network) ForgetController(response http.ResponseWriter, request *http.Request) {
 	BeginResponse(request, "/forget")
