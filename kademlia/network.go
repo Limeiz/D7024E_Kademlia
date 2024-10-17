@@ -317,6 +317,11 @@ func (network *Network) OpenPortAndListen(port int) {
 		log.Fatal(err)
 	}
 
+	log.Printf("Listening on UDP %s:%d", addr.IP.String(), addr.Port)
+	if err != nil{
+		log.Fatal(err)
+	}
+
 	connection.SetReadBuffer(65535)
 
 	buffer := make([]byte, 65535)
