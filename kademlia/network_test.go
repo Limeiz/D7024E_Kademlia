@@ -340,7 +340,7 @@ func TestEncodeMessageHeaderInvalidTypeAndDirection(t *testing.T) {
 	// Invalid Message Type
 	header.Type = MAX_MESSAGE_TYPE
 	_, err := EncodeMessageHeader(header)
-	if err == nil || err.Error() != "invalid MessageType: 4" {
+	if err == nil || err.Error() != "invalid MessageType: 5" {
 		t.Errorf("Expected invalid MessageType error, got %v", err)
 	}
 
