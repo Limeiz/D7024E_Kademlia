@@ -502,13 +502,21 @@ func (kademlia *Kademlia) SendFindValueRPC(contact *Contact, valueID *KademliaID
 		ClosestContacts: make([]Contact, 0),
 	}
 
-	// Try parse response for value then contacts
-	response.Value = string(data.Data)
-	if len(response.Value) > 0 {
-		response.ClosestContacts = append(response.ClosestContacts, *contact) // also send the node it was found on THIS LINE
-		return response, nil
-	}
+	// Try parse contacts
 	contacts, err := DeserializeContacts(data.Data)
+	if err != nil {
+		// log.Printf("Failed to deserialize contacts: %v\n", err)
+
+		// Try parse string value
+		response.Value = string(data.Data)
+		if len(response.Value) > 0 {
+			response.ClosestContacts = append(response.ClosestContacts, *contact) // also send the node it was found on THIS LINE
+			return response, nil
+		}
+
+	}
+
+	contacts, err = DeserializeContacts(data.Data)
 	if err != nil {
 		log.Printf("Failed to deserialize contacts: %v\n", err)
 		return FindValueResponse{}, err
