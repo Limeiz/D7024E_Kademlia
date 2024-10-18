@@ -1,5 +1,5 @@
 # New readme
-This README provides instructions to set up a Kademlia Distributed Hash Table (DHT) implementation using Docker, along with steps to run tests and view the code coverage in Go.
+This README provides instructions to set up our implementation of the Kademlia Distributed Hash Table (DHT) using Docker, along with steps to run tests and view the code coverage using Go.
 Kademlia is a peer-to-peer (P2P) protocol for decentralized storage and retrieval of data, which enables efficient and scalable network communication. This implementation demonstrate the fundamental principles of Kademlia, including setting up a network, finding nodes and store and retrieve data. A command line interface (CLI) was also implemented to make it easier for users to communicate with the system.
 
 ## Prerequisites
